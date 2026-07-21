@@ -92,6 +92,7 @@ try {
   assert.equal(state.seed, "MOBILE-REPLAY-1");
   assert.equal(state.tick, 0);
   await page.locator("#copy-replay").click();
+  await page.waitForFunction(() => /Replay URL copied/.test(document.querySelector(".status-line")?.textContent || ""));
   assert.match(await page.locator(".status-line").innerText(), /Replay URL copied/);
   assert.match(await page.evaluate(() => navigator.clipboard.readText()), /seed=MOBILE-REPLAY-1/);
 
