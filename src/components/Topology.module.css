@@ -1,276 +1,283 @@
 .topology {
-  --ink: #202624;
-  --muted: #626b5d;
-  --orange: #9f4b24;
   width: 100%;
-  max-width: 1060px;
-  margin: 0 auto;
-  padding: 15px 0 23px;
-  color: var(--ink);
+  padding: 16px 0 12px;
 }
-
 .pipeline {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 54px;
+  gap: 40px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-
 .stageSlot {
   position: relative;
   min-width: 0;
 }
-
 .stage {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
-  min-height: 230px;
-  padding: 18px 10px 20px;
+  min-height: 186px;
+  padding: 14px 10px 18px;
   border: 1px solid transparent;
-  border-radius: 0;
-  appearance: none;
+  border-radius: 5px;
   background: transparent;
   color: var(--ink);
   text-align: center;
   font: inherit;
   cursor: pointer;
-  transition: background-color 140ms ease;
 }
-
 .stage:hover {
-  background: #f1f2ec;
+  background: #f0f2e9;
 }
-
-.stage::after {
-  position: absolute;
-  right: calc(50% - 16px);
-  bottom: 5px;
-  width: 32px;
-  height: 2px;
-  background: transparent;
-  content: "";
+.stage[aria-expanded="true"] {
+  background: #eef1e6;
+  border-color: #c5ceba;
 }
-
-.stage[aria-pressed="true"]::after {
-  background: #202624;
-}
-
 .stage:focus-visible {
-  outline: 2px solid #767b73;
+  outline: 2px solid var(--blue);
   outline-offset: 3px;
 }
-
 .stageName {
-  font-size: 25px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 21px;
   font-weight: 500;
-  letter-spacing: -0.045em;
-  line-height: 1.2;
+  letter-spacing: -0.65px;
 }
-
-.queueVisual {
+.disclosureArrow {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.stage[aria-expanded="true"] .disclosureArrow {
+  transform: rotate(180deg);
+}
+.stageNumber {
+  font: 9px var(--mono);
+  color: var(--dim);
+  letter-spacing: 0;
+}
+.processing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+.slots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 21px;
+}
+.slot {
+  display: block;
+  width: 14px;
+  height: 21px;
+  border: 1px solid #9ba58e;
+  border-radius: 2px;
+  background: transparent;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.slot[data-filled="true"] {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+.movement {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.movement b {
+  color: var(--blue);
+  font-weight: 600;
+}
+.queue {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 54px;
-  height: 47px;
-  margin-top: 23px;
+  gap: 8px;
+  margin-top: 17px;
+  min-height: 28px;
 }
-
+.queueVisual {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 16px;
+}
 .slips {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 3px;
+  gap: 2px;
 }
-
 .slip {
   display: block;
-  width: 42px;
-  height: 3px;
+  width: 16px;
+  height: 2px;
   background: var(--orange);
 }
-
-.emptySymbol {
-  display: block;
-  width: 23px;
-  height: 23px;
-  border: 1px solid #c5cabf;
-  border-radius: 50%;
-}
-
-.queueMetric {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-top: 15px;
-}
-
-.queueCount,
-.clearLabel {
-  min-height: 31px;
-  font-size: 25px;
-  font-weight: 450;
-  line-height: 1.2;
-  letter-spacing: -0.035em;
-  font-variant-numeric: tabular-nums;
-}
-
-.clearLabel {
-  font-size: 21px;
-  line-height: 1.4;
-}
-
-.stage[data-waiting="true"] .queueCount,
-.stage[data-waiting="true"] .waitingLabel {
+.overflow {
   color: var(--orange);
+  font: 9px var(--mono);
 }
-
+.emptyQueue {
+  color: var(--dim);
+  font-size: 12px;
+}
 .waitingLabel {
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.5;
+  white-space: nowrap;
 }
-
-.capacity {
-  margin-top: 18px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.4;
+.waitingLabel b {
+  font-weight: 550;
 }
-
+.stage[data-waiting="true"] .waitingLabel {
+  color: var(--orange);
+}
 .connector {
   position: absolute;
-  top: 89px;
+  top: 77px;
   left: 100%;
-  display: block;
-  width: 54px;
+  width: 40px;
   height: 12px;
+  padding-inline: 2px;
   pointer-events: none;
 }
-
 .connector svg {
   display: block;
   width: 100%;
   height: 100%;
-  overflow: visible;
   fill: none;
-  stroke: #bdc3b7;
+  stroke: #8c977f;
   stroke-width: 1;
 }
-
-.flowMark {
-  stroke: #767e6e;
-  stroke-width: 2;
-  animation: move-work 950ms linear infinite;
+.connector[data-active="true"] svg {
+  stroke: var(--blue);
 }
-
+.flowMark {
+  stroke-width: 3;
+  animation: move-work 800ms linear infinite;
+}
 @keyframes move-work {
   from {
     transform: translateX(0);
   }
   to {
-    transform: translateX(47px);
+    transform: translateX(40px);
   }
 }
-
 @media (max-width: 900px) and (min-width: 701px) {
   .pipeline {
-    gap: 32px;
+    gap: 24px;
   }
   .connector {
-    width: 32px;
+    width: 24px;
   }
   .stageName {
-    font-size: 23px;
+    font-size: 19px;
+  }
+  .stage {
+    padding-inline: 5px;
   }
 }
-
 @media (max-width: 700px) {
   .topology {
-    padding: 4px 0 10px;
+    padding: 8px 0;
   }
   .pipeline {
     grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
+    gap: 10px;
   }
   .stage {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 42px 74px;
-    grid-template-rows: auto auto;
-    column-gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 80px 82px;
     align-items: center;
-    min-height: 85px;
-    padding: 15px 12px;
+    gap: 10px;
+    min-height: 67px;
+    padding: 9px 8px;
     text-align: left;
   }
   .stageName {
-    grid-column: 1;
-    grid-row: 1;
-    font-size: 22px;
+    font-size: 19px;
+    gap: 6px;
   }
-  .capacity {
-    grid-column: 1;
-    grid-row: 2;
-    margin-top: 3px;
+  .stageNumber {
+    font-size: 8px;
+  }
+  .processing {
+    margin: 0;
+    gap: 6px;
+  }
+  .slots {
+    height: 16px;
+    gap: 4px;
+  }
+  .slot {
+    width: 10px;
+    height: 16px;
+  }
+  .movement {
     font-size: 10px;
+    white-space: nowrap;
+  }
+  .queue {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    align-items: flex-end;
+    justify-content: center;
+    min-height: 43px;
   }
   .queueVisual {
-    grid-column: 2;
-    grid-row: 1 / -1;
-    width: 42px;
-    height: 45px;
-    margin: 0;
-  }
-  .slip {
-    width: 28px;
-    height: 2px;
+    min-width: 0;
+    min-height: 15px;
   }
   .slips {
-    gap: 3px;
+    gap: 1px;
   }
-  .emptySymbol {
+  .slip {
+    height: 1px;
     width: 18px;
-    height: 18px;
   }
-  .queueMetric {
-    grid-column: 3;
-    grid-row: 1 / -1;
-    align-items: flex-end;
-    margin-top: 0;
-  }
-  .queueCount,
-  .clearLabel {
-    min-height: 27px;
-    font-size: 22px;
-  }
-  .clearLabel {
-    font-size: 19px;
+  .overflow {
+    font-size: 8px;
   }
   .waitingLabel {
     font-size: 10px;
   }
-  .stage::after {
-    right: auto;
-    left: 12px;
-    bottom: 6px;
-    width: 24px;
-  }
   .connector {
     top: 100%;
-    left: 21px;
-    width: 16px;
+    left: 15px;
+    width: 10px;
     height: 8px;
-    transform: translateY(4px) rotate(90deg);
+    padding: 0;
+    transform: translateY(1px) rotate(90deg);
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
+@media (max-width: 360px) {
   .stage {
+    grid-template-columns: minmax(0, 1fr) 75px 72px;
+    gap: 7px;
+    padding-inline: 5px;
+  }
+  .stageName {
+    font-size: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slot {
     transition: none;
   }
   .flowMark {

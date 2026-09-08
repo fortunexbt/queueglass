@@ -93,7 +93,7 @@ button svg {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  min-height: 88px;
+  min-height: 70px;
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 44px;
@@ -157,27 +157,32 @@ button svg {
 }
 .share-button {
   font-size: 11px;
+  min-width: 117px;
+}
+.share-button[data-feedback="copied"] {
+  color: var(--blue);
+  border-color: var(--blue);
 }
 .workspace {
   width: min(100% - 88px, 1040px);
   margin: 0 auto;
-  padding-top: 37px;
+  padding-top: 20px;
   padding-bottom: 18px;
 }
 .introduction h1 {
-  font-size: clamp(34px, 4.1vw, 51px);
+  font-size: clamp(30px, 3.3vw, 40px);
   font-weight: 480;
-  letter-spacing: -2px;
+  letter-spacing: -1.5px;
   line-height: 1.15;
 }
 .introduction p {
   color: var(--muted);
-  margin-top: 16px;
-  font-size: 15px;
+  margin-top: 10px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .situation-picker {
-  margin: 42px 0 25px;
+  margin: 26px 0 20px;
 }
 .field-label {
   font-size: 11px;
@@ -240,15 +245,15 @@ button svg {
 }
 .flow-heading .icon-button {
   border: 0;
-  min-height: 36px;
-  width: 36px;
+  min-height: 44px;
+  width: 44px;
 }
 .flow-summary {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 20px;
-  padding: 16px 0;
+  padding: 13px 0;
 }
 .flow-summary > div {
   display: flex;
@@ -284,15 +289,15 @@ button svg {
 .tick-readout i.running {
   background: var(--blue);
 }
-.explanation-panel {
-  padding: 23px 0 30px;
-}
 .control-panel {
   padding: 15px 0;
   scroll-margin-top: 20px;
 }
+.run-explanation {
+  padding: 7px 0 12px;
+}
 .run-explanation h2 {
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 500;
   letter-spacing: -0.5px;
   line-height: 1.35;
@@ -302,12 +307,6 @@ button svg {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
-}
-.phase-note {
-  display: block;
-  color: var(--orange);
-  font: 9px var(--mono);
-  margin-top: 9px;
 }
 .transport {
   display: flex;
@@ -319,7 +318,7 @@ button svg {
   border-color: transparent;
 }
 .details-area {
-  border-top: 1px solid var(--line);
+  margin-top: 10px;
 }
 .disclosure {
   border-bottom: 1px solid var(--line);
@@ -328,7 +327,7 @@ button svg {
   display: flex;
   align-items: center;
   gap: 20px;
-  min-height: 60px;
+  min-height: 53px;
   cursor: pointer;
   list-style: none;
   font-size: 12px;
@@ -523,10 +522,11 @@ select {
   line-height: 1.5;
 }
 .stage-inspector {
-  max-width: 650px;
+  scroll-margin-block: 16px;
+  max-width: none;
   background: #f0f2e9;
   padding: 18px 24px 22px;
-  margin: 0 0 28px;
+  margin: 5px 0 12px;
   border-left: 2px solid var(--blue);
 }
 .close-button {
@@ -698,13 +698,37 @@ kbd {
 .workspace-footer > span {
   white-space: nowrap;
 }
+
+.tick-balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 15px;
+  font-size: 11px !important;
+}
+.tick-balance b {
+  color: var(--ink);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.tick-balance .growing,
+.tick-balance .growing b {
+  color: var(--orange);
+}
+.tick-label {
+  color: var(--dim);
+  font-size: 10px;
+}
+#inspector-title:focus {
+  outline: none;
+}
 @media (max-width: 850px) {
   .app-header {
     padding-inline: 28px;
   }
   .workspace {
     width: calc(100% - 56px);
-    padding-top: 26px;
+    padding-top: 18px;
   }
   .simulation-label {
     display: none;
@@ -723,7 +747,7 @@ kbd {
 @media (max-width: 700px) {
   .app-header {
     padding: 0 20px;
-    min-height: 75px;
+    min-height: 60px;
     gap: 16px;
   }
   .brand {
@@ -739,21 +763,21 @@ kbd {
   }
   .workspace {
     width: calc(100% - 40px);
-    padding-top: 21px;
+    padding-top: 12px;
   }
   .introduction h1 {
-    font-size: 36px;
+    font-size: 28px;
     letter-spacing: -1.5px;
     max-width: 350px;
   }
   .introduction p {
-    font-size: 13px;
-    max-width: 290px;
-    margin-top: 13px;
+    font-size: 12px;
+    max-width: none;
+    margin-top: 8px;
   }
   .situation-picker {
-    margin-top: 29px;
-    margin-bottom: 20px;
+    margin-top: 18px;
+    margin-bottom: 14px;
   }
   .field-label {
     font-size: 10px;
@@ -800,38 +824,35 @@ kbd {
     font-size: 10px !important;
   }
   .control-panel {
-    flex-wrap: wrap;
-    padding: 13px 0;
-    gap: 4px;
+    flex-wrap: nowrap;
+    padding: 10px 0;
+    gap: 5px;
   }
   .control-panel .flow-hint {
-    margin: 10px 0 0;
-    flex: 1;
+    display: none;
   }
   .control-panel > .icon-button {
-    margin-top: 4px;
-  }
-  .explanation-panel {
-    padding: 22px 0 26px;
+    margin: 0;
   }
   .run-explanation h2 {
-    font-size: 20px;
+    font-size: 16px;
   }
   .run-explanation p {
     font-size: 12px;
   }
   .transport {
-    width: 100%;
-    gap: 9px;
+    width: auto;
+    flex: 1;
+    gap: 5px;
   }
   .transport .primary {
     flex: 1;
   }
   .transport .step-button {
-    min-width: 90px;
+    min-width: 78px;
   }
   .disclosure > summary {
-    min-height: 59px;
+    min-height: 49px;
     gap: 13px;
   }
   .summary-description {
@@ -958,7 +979,7 @@ kbd {
     padding-inline: 6px;
   }
   .introduction h1 {
-    font-size: 33px;
+    font-size: 26px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

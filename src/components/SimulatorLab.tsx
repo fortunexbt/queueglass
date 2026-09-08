@@ -36,8 +36,6 @@ const SCENARIO_PRESENTATION: Record<
     label: string;
     description: string;
     window: [number, number] | null;
-    active: string;
-    after: string;
   }
 > = {
   nominal: {
@@ -45,35 +43,21 @@ const SCENARIO_PRESENTATION: Record<
     description:
       "Work arrives at a steady pace. Small queues can still build up.",
     window: null,
-    active: "Steady arrivals",
-    after: "Steady arrivals",
   },
   burst: {
     label: "Sudden rush",
     description:
       "A rush of extra work arrives at tick 6. Normal traffic returns at tick 14.",
     window: [6, 13],
-    active: "Burst in progress",
-    after: "Burst ended",
   },
   policy_degraded: {
     label: "Slower checkpoint",
     description:
       "The Check step slows down at tick 7 and returns to normal at tick 20.",
     window: [7, 19],
-    active: "Capacity reduced",
-    after: "Capacity restored",
   },
 };
 
-function getPhase(scenario: ScenarioId, tick: number) {
-  const presentation = SCENARIO_PRESENTATION[scenario];
-  if (!presentation.window) return presentation.active;
-  if (tick < presentation.window[0])
-    return `Starts at T${presentation.window[0]}`;
-  if (tick <= presentation.window[1]) return presentation.active;
-  return presentation.after;
-}
 const STAGE_NOTES: Record<string, string> = {
   intake: "Admits incoming work into the model.",
   classify: "Orders work by priority, then age.",
@@ -288,6 +272,9 @@ export default function SimulatorLab({
     "Your experiment stays in this browser.",
   );
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<
+    "idle" | "copied" | "blocked"
+  >("idle");
   const virtualRemainderRef = useRef(0);
   const labRef = useRef<HTMLElement>(null);
 
@@ -432,6 +419,14 @@ export default function SimulatorLab({
     };
   }, [toggleFullscreen, toggleRun]);
 
+  useEffect(() => {
+    if (!selectedStage) return;
+    const heading = document.getElementById("inspector-title");
+    const inspector = document.getElementById("stage-inspector");
+    heading?.focus({ preventScroll: true });
+    inspector?.scrollIntoView({ block: "nearest", behavior: "instant" });
+  }, [selectedStage]);
+
   const closeInspector = () => {
     document.getElementById(`stage-${selectedStage}`)?.focus();
     setSelectedStage("");
@@ -458,15 +453,22 @@ export default function SimulatorLab({
     (largest, stage) => (stage.waiting > largest.waiting ? stage : largest),
     simulation.stages[0],
   );
-  const phase = getPhase(simulation.scenarioId, simulation.tick);
+
+  useEffect(() => {
+    if (copyFeedback === "idle") return;
+    const timeout = window.setTimeout(() => setCopyFeedback("idle"), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [copyFeedback]);
 
   const copyReplay = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
+      setCopyFeedback("copied");
       setNotice(
         "Replay URL copied. The seed and scenario reproduce the same run from tick 0.",
       );
     } catch {
+      setCopyFeedback("blocked");
       setNotice(
         "Clipboard access was blocked; copy the URL from the address bar.",
       );
@@ -507,10 +509,20 @@ export default function SimulatorLab({
           <button
             id="copy-replay"
             className="button share-button"
+            data-feedback={copyFeedback}
+            title={
+              copyFeedback === "blocked"
+                ? "Clipboard blocked. Copy the URL from the address bar."
+                : "Copy a link to this seed and situation"
+            }
             onClick={copyReplay}
           >
             <Icon name="share" />
-            Share replay
+            {copyFeedback === "copied"
+              ? "Copied"
+              : copyFeedback === "blocked"
+                ? "Copy blocked"
+                : "Share replay"}
           </button>
         </div>
       </header>
@@ -591,6 +603,37 @@ export default function SimulatorLab({
               <Icon name="expand" />
             </button>
           </div>
+          <div className="run-explanation" aria-label="What is happening">
+            <h2>{explanation}</h2>
+            {simulation.tick === 0 ? (
+              <p>{explanationDetail}</p>
+            ) : (
+              <p className="tick-balance" aria-label="This tick">
+                <span className="tick-label">This tick</span>
+                <span id="tick-arrived">
+                  <b>{latest.arrived}</b> arrived
+                </span>
+                <span id="tick-finished">
+                  <b>{latest.completed}</b> finished
+                </span>
+                <span
+                  id="tick-queue-change"
+                  className={latest.arrived > latest.completed ? "growing" : ""}
+                >
+                  {latest.arrived === latest.completed ? (
+                    "Queue unchanged"
+                  ) : (
+                    <>
+                      <b>{Math.abs(latest.arrived - latest.completed)}</b>
+                      {latest.arrived > latest.completed
+                        ? " more waiting"
+                        : " fewer waiting"}
+                    </>
+                  )}
+                </span>
+              </p>
+            )}
+          </div>
           <Topology
             stages={simulation.stages}
             selectedStage={selectedStage}
@@ -599,6 +642,78 @@ export default function SimulatorLab({
             }
             running={running}
           />
+          {selected && (
+            <section
+              id="stage-inspector"
+              className="stage-inspector"
+              data-stage={selectedStage}
+              aria-labelledby="inspector-title"
+            >
+              <div className="section-heading">
+                <h2 id="inspector-title" tabIndex={-1}>
+                  Inside {STEP_NAMES[selectedStage]}
+                </h2>
+                <button
+                  id="close-inspector"
+                  className="icon-button close-button"
+                  aria-label="Close stage inspector"
+                  onClick={closeInspector}
+                >
+                  ×
+                </button>
+              </div>
+              <p className="inspector-description">
+                {STAGE_NOTES[selectedStage]}
+              </p>
+              <dl className="inspector-metrics">
+                <div>
+                  <dt>Can process per tick</dt>
+                  <dd>{selected.capacity}</dd>
+                </div>
+                <div>
+                  <dt>Moved this tick</dt>
+                  <dd>{selected.handled}</dd>
+                </div>
+                <div>
+                  <dt>Still waiting</dt>
+                  <dd>{selected.waiting}</dd>
+                </div>
+              </dl>
+              <div className="work-list">
+                <div className="work-list-heading">
+                  <span>WAITING ITEMS</span>
+                  <span>PRIORITY / RETRIES</span>
+                </div>
+                {stageWork.length ? (
+                  <ul>
+                    {stageWork.slice(0, 5).map((item) => (
+                      <li key={item.id}>
+                        <span>{item.id}</span>
+                        <span>
+                          <b>P{item.priority}</b>
+                          <span className={item.retries ? "has-retries" : ""}>
+                            {item.retries}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="empty-work">
+                    {simulation.tick
+                      ? "No work is waiting at this step."
+                      : "Run the simulation to send work through this step."}
+                  </p>
+                )}
+                {stageWork.length > 5 && (
+                  <p className="work-overflow">
+                    First 5 of {stageWork.length}, in processing order. Higher
+                    priority goes first.
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
           <div className="flow-summary">
             <div>
               <span
@@ -611,7 +726,7 @@ export default function SimulatorLab({
                 <b>{simulation.queue.length}</b> waiting
               </span>
               <span>
-                <b>{simulation.completed}</b> finished
+                <b>{simulation.completed}</b> finished total
               </span>
             </div>
             <span className="tick-readout">
@@ -620,89 +735,6 @@ export default function SimulatorLab({
             </span>
           </div>
         </section>
-
-        <section className="explanation-panel" aria-label="What is happening">
-          <div className="run-explanation">
-            <h2>{explanation}</h2>
-            <p>{explanationDetail}</p>
-            {simulation.tick > 0 && scenarioNote.window && (
-              <span className="phase-note">{phase}</span>
-            )}
-          </div>
-        </section>
-
-        {selected && (
-          <section
-            id="stage-inspector"
-            className="stage-inspector"
-            data-stage={selectedStage}
-            aria-labelledby="inspector-title"
-          >
-            <div className="section-heading">
-              <h2 id="inspector-title">
-                Inside {STEP_NAMES[selectedStage]} <span>{selected.label}</span>
-              </h2>
-              <button
-                id="close-inspector"
-                className="icon-button close-button"
-                aria-label="Close stage inspector"
-                onClick={closeInspector}
-              >
-                ×
-              </button>
-            </div>
-            <p className="inspector-description">
-              {STAGE_NOTES[selectedStage]}
-            </p>
-            <dl className="inspector-metrics">
-              <div>
-                <dt>Can process per tick</dt>
-                <dd>{selected.capacity}</dd>
-              </div>
-              <div>
-                <dt>Moved this tick</dt>
-                <dd>{selected.handled}</dd>
-              </div>
-              <div>
-                <dt>Still waiting</dt>
-                <dd>{selected.waiting}</dd>
-              </div>
-            </dl>
-            <div className="work-list">
-              <div className="work-list-heading">
-                <span>WAITING ITEMS</span>
-                <span>PRIORITY / RETRIES</span>
-              </div>
-              {stageWork.length ? (
-                <ul>
-                  {stageWork.slice(0, 5).map((item) => (
-                    <li key={item.id}>
-                      <span>{item.id}</span>
-                      <span>
-                        <b>P{item.priority}</b>
-                        <span className={item.retries ? "has-retries" : ""}>
-                          {item.retries}
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-work">
-                  {simulation.tick
-                    ? "No work is waiting at this step."
-                    : "Run the simulation to send work through this step."}
-                </p>
-              )}
-              {stageWork.length > 5 && (
-                <p className="work-overflow">
-                  First 5 of {stageWork.length}, in processing order. Higher
-                  priority goes first.
-                </p>
-              )}
-            </div>
-          </section>
-        )}
 
         <div className="details-area">
           <details id="numbers-panel" className="disclosure">

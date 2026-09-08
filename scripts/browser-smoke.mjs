@@ -114,6 +114,39 @@ function assertHistory(state) {
   }
 }
 
+async function assertMainFlow(page, state) {
+  for (const stage of state.stages) {
+    const button = page.locator(`#stage-${stage.id}`);
+    assert.equal(
+      await button.getByTestId("stage-movement").innerText(),
+      `${stage.handled} of ${stage.capacity} moved`,
+    );
+    assert.equal(
+      await button.locator('[data-filled="true"]').count(),
+      stage.handled,
+      "filled processing slots must represent successful movement this tick",
+    );
+  }
+  if (state.tick > 0) {
+    const latest = state.history.at(-1);
+    assert.equal(
+      await page.locator("#tick-arrived").innerText(),
+      `${latest.arrived} arrived`,
+    );
+    assert.equal(
+      await page.locator("#tick-finished").innerText(),
+      `${latest.completed} finished`,
+    );
+    const delta = latest.arrived - latest.completed;
+    assert.equal(
+      await page.locator("#tick-queue-change").innerText(),
+      delta === 0
+        ? "Queue unchanged"
+        : `${Math.abs(delta)} ${delta > 0 ? "more" : "fewer"} waiting`,
+    );
+  }
+}
+
 async function focusBackground(page) {
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement)
@@ -177,6 +210,7 @@ try {
     "burst scenario should create queue pressure by tick 10",
   );
   assertHistory(state);
+  await assertMainFlow(page, state);
   const firstTenTicks = state;
 
   await page.locator("#reset-replay").click();
@@ -237,7 +271,25 @@ try {
     await page.locator("#stage-inspector").getAttribute("data-stage"),
     "policy",
   );
-  assert.match(await page.locator("#stage-inspector").innerText(), /Policy/);
+  await page.waitForFunction(
+    () => document.activeElement?.id === "inspector-title",
+    {},
+    { timeout: 1500 },
+  );
+  const inspectorVisibility = await page
+    .locator("#stage-inspector")
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= -1 && rect.bottom <= innerHeight + 1;
+    });
+  assert.ok(
+    inspectorVisibility,
+    "opening a stage must reveal its inspector in the viewport",
+  );
+  assert.match(
+    await page.locator("#stage-inspector").innerText(),
+    /Inside Check/,
+  );
   const policyStage = state.stages.find((stage) => stage.id === "policy");
   assert.deepEqual(
     await page
@@ -264,6 +316,19 @@ try {
   await page
     .locator("#stage-inspector")
     .screenshot({ path: path.join(outputDir, "queueglass-inspector.png") });
+  const inspectedTick = (await readState(page)).tick;
+  await page.keyboard.press("Space");
+  await page.waitForFunction(
+    (tick) => JSON.parse(window.render_game_to_text()).tick > tick,
+    inspectedTick,
+  );
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    "inspector-title",
+    "automatic ticks must preserve inspection focus",
+  );
+  await page.keyboard.press("Space");
+  assert.equal((await readState(page)).running, false);
   await page.locator("#close-inspector").focus();
   await page.keyboard.press("Enter");
   assert.equal(
@@ -297,6 +362,7 @@ try {
   );
   await page.locator("#toggle-run").click();
   await page.waitForTimeout(80);
+  await assertMainFlow(page, await readState(page));
   const pausedTick = (await readState(page)).tick;
   await page.waitForTimeout(750);
   assert.equal(
@@ -348,6 +414,11 @@ try {
     await page.locator(".status-line").innerText(),
     /Replay URL copied/,
   );
+  assert.equal(
+    await page.locator("#copy-replay").innerText(),
+    "Copied",
+    "sharing must give feedback beside the action",
+  );
   const sharedUrl = new URL(
     await page.evaluate(() => navigator.clipboard.readText()),
   );
@@ -361,6 +432,21 @@ try {
   assert.equal(sharedState.seed, "MOBILE-REPLAY-1");
   assert.equal(sharedState.scenario, "policy_degraded");
   assert.equal(sharedState.tick, 0);
+  await sharedPage.evaluate(() => {
+    navigator.clipboard.writeText = async () => {
+      throw new DOMException("Clipboard denied", "NotAllowedError");
+    };
+  });
+  await sharedPage.locator("#copy-replay").click();
+  await sharedPage.waitForFunction(() =>
+    document
+      .querySelector("#copy-replay")
+      ?.textContent?.includes("Copy blocked"),
+  );
+  assert.match(
+    await sharedPage.locator("#copy-replay").getAttribute("title"),
+    /address bar/,
+  );
   await sharedPage.close();
 
   await page.locator("#toggle-fullscreen").click();
@@ -401,6 +487,11 @@ try {
   assertHistory(state);
   await setDisclosure(page, "#numbers-panel", false);
   await setDisclosure(page, "#replay-settings", false);
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#copy-replay")?.getAttribute("data-feedback") ===
+      "idle",
+  );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: path.join(docsDir, "queueglass.png"),
@@ -421,6 +512,9 @@ try {
     playbackSpeedExercised: true,
     policyInspectorExercised: true,
     historyReplayVerified: true,
+    movementCountsVerified: true,
+    inspectionFocusDuringPlayback: true,
+    clipboardDeniedFeedbackSimulated: true,
     retainedHistory,
   };
   await desktop.close();
@@ -435,15 +529,39 @@ try {
     waitUntil: "networkidle",
   });
   await waitForHook(mobilePage);
+  const firstScreen = await mobilePage.evaluate(() => ({
+    controlsTop: document.querySelector("#controls").getBoundingClientRect()
+      .top,
+    resultBottom: document
+      .querySelector(".flow-summary")
+      .getBoundingClientRect().bottom,
+    viewportHeight: innerHeight,
+  }));
+  assert.ok(
+    firstScreen.controlsTop >= 0 &&
+      firstScreen.resultBottom <= firstScreen.viewportHeight,
+    "the initial phone viewport must contain playback, all four steps, and the result",
+  );
   await advanceTen(mobilePage);
   const mobileState = await readState(mobilePage);
   assert.equal(mobileState.tick, 10);
   assertHistory(mobileState);
+  await assertMainFlow(mobilePage, mobileState);
   await setDisclosure(mobilePage, "#numbers-panel", false);
   await mobilePage.locator("#stage-policy").click();
   assert.equal(
     await mobilePage.locator("#stage-inspector").getAttribute("data-stage"),
     "policy",
+  );
+  await mobilePage.waitForFunction(
+    () => document.activeElement?.id === "inspector-title",
+  );
+  assert.ok(
+    await mobilePage.locator("#stage-inspector").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= -1 && rect.bottom <= innerHeight + 1;
+    }),
+    "phone stage inspection must be immediately visible",
   );
   await mobilePage.locator("#close-inspector").click();
   assert.equal(await mobilePage.locator("#stage-inspector").count(), 0);
@@ -496,8 +614,42 @@ try {
     scenario: mobileState.scenario,
     tick: mobileState.tick,
     layout,
+    firstScreen,
   };
   await mobile.close();
+
+  const narrowContext = await browser.newContext({
+    viewport: { width: 320, height: 844 },
+    isMobile: true,
+  });
+  const narrowPage = await narrowContext.newPage();
+  observe(narrowPage, "narrow phone");
+  const narrowLayouts = [];
+  for (const scenario of ["nominal", "burst", "policy_degraded"]) {
+    await narrowPage.goto(`${baseUrl}/?seed=POCKET-3&scenario=${scenario}`, {
+      waitUntil: "networkidle",
+    });
+    await waitForHook(narrowPage);
+    const bounds = await narrowPage.evaluate(() => ({
+      viewportWidth: innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      resultBottom: document
+        .querySelector(".flow-summary")
+        .getBoundingClientRect().bottom,
+      viewportHeight: innerHeight,
+    }));
+    narrowLayouts.push({ scenario, ...bounds });
+    assert.ok(
+      bounds.documentWidth <= bounds.viewportWidth,
+      `${scenario} must fit a narrow phone`,
+    );
+    assert.ok(
+      bounds.resultBottom <= bounds.viewportHeight,
+      `${scenario} must keep the initial flow and result in view`,
+    );
+  }
+  await narrowContext.close();
+  proof.narrowPhones = narrowLayouts;
 
   assert.deepEqual(
     externalRequests,
