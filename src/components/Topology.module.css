@@ -1,0 +1,279 @@
+.topology {
+  --ink: #202624;
+  --muted: #626b5d;
+  --orange: #9f4b24;
+  width: 100%;
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 15px 0 23px;
+  color: var(--ink);
+}
+
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 54px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stageSlot {
+  position: relative;
+  min-width: 0;
+}
+
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 230px;
+  padding: 18px 10px 20px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  appearance: none;
+  background: transparent;
+  color: var(--ink);
+  text-align: center;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.stage:hover {
+  background: #f1f2ec;
+}
+
+.stage::after {
+  position: absolute;
+  right: calc(50% - 16px);
+  bottom: 5px;
+  width: 32px;
+  height: 2px;
+  background: transparent;
+  content: "";
+}
+
+.stage[aria-pressed="true"]::after {
+  background: #202624;
+}
+
+.stage:focus-visible {
+  outline: 2px solid #767b73;
+  outline-offset: 3px;
+}
+
+.stageName {
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+}
+
+.queueVisual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 47px;
+  margin-top: 23px;
+}
+
+.slips {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.slip {
+  display: block;
+  width: 42px;
+  height: 3px;
+  background: var(--orange);
+}
+
+.emptySymbol {
+  display: block;
+  width: 23px;
+  height: 23px;
+  border: 1px solid #c5cabf;
+  border-radius: 50%;
+}
+
+.queueMetric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 15px;
+}
+
+.queueCount,
+.clearLabel {
+  min-height: 31px;
+  font-size: 25px;
+  font-weight: 450;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.clearLabel {
+  font-size: 21px;
+  line-height: 1.4;
+}
+
+.stage[data-waiting="true"] .queueCount,
+.stage[data-waiting="true"] .waitingLabel {
+  color: var(--orange);
+}
+
+.waitingLabel {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.capacity {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.connector {
+  position: absolute;
+  top: 89px;
+  left: 100%;
+  display: block;
+  width: 54px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.connector svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: #bdc3b7;
+  stroke-width: 1;
+}
+
+.flowMark {
+  stroke: #767e6e;
+  stroke-width: 2;
+  animation: move-work 950ms linear infinite;
+}
+
+@keyframes move-work {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(47px);
+  }
+}
+
+@media (max-width: 900px) and (min-width: 701px) {
+  .pipeline {
+    gap: 32px;
+  }
+  .connector {
+    width: 32px;
+  }
+  .stageName {
+    font-size: 23px;
+  }
+}
+
+@media (max-width: 700px) {
+  .topology {
+    padding: 4px 0 10px;
+  }
+  .pipeline {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42px 74px;
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    align-items: center;
+    min-height: 85px;
+    padding: 15px 12px;
+    text-align: left;
+  }
+  .stageName {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 22px;
+  }
+  .capacity {
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: 3px;
+    font-size: 10px;
+  }
+  .queueVisual {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    width: 42px;
+    height: 45px;
+    margin: 0;
+  }
+  .slip {
+    width: 28px;
+    height: 2px;
+  }
+  .slips {
+    gap: 3px;
+  }
+  .emptySymbol {
+    width: 18px;
+    height: 18px;
+  }
+  .queueMetric {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-items: flex-end;
+    margin-top: 0;
+  }
+  .queueCount,
+  .clearLabel {
+    min-height: 27px;
+    font-size: 22px;
+  }
+  .clearLabel {
+    font-size: 19px;
+  }
+  .waitingLabel {
+    font-size: 10px;
+  }
+  .stage::after {
+    right: auto;
+    left: 12px;
+    bottom: 6px;
+    width: 24px;
+  }
+  .connector {
+    top: 100%;
+    left: 21px;
+    width: 16px;
+    height: 8px;
+    transform: translateY(4px) rotate(90deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage {
+    transition: none;
+  }
+  .flowMark {
+    animation: none;
+  }
+}

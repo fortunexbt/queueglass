@@ -2,7 +2,7 @@
 
 **SIMULATED · LOCAL · SEEDED · REPLAYABLE**
 
-A deterministic discrete-event laboratory for exploring queue pressure, stage capacity, retry decisions, and recovery. It is an educational model—not a monitored service, performance benchmark, AI agent, or description of production infrastructure.
+A small, deterministic queue simulator. Send work through four steps, change the traffic, and see where it gets stuck. All data is generated locally by an educational model.
 
 ![Queueglass running a seeded burst scenario](docs/queueglass.png)
 
@@ -19,11 +19,14 @@ Item counts are synthetic. Capacity and compute are arbitrary model units. Laten
 
 ## What can be explored
 
-- **Nominal flow** — balanced synthetic arrivals and capacity.
-- **Burst pressure** — a repeatable tick-bounded arrival surge and queue recovery.
-- **Policy constrained** — a repeatable capacity reduction with seeded retry decisions.
-- **Replay controls** — advance one or ten ticks, auto-run, pause, reset, derive a seed, and share `?seed=&scenario=` URLs.
-- **Inspectability** — every stage exposes capacity, work moved this tick, and queued synthetic work.
+- **Steady traffic** (`nominal`) — 1–3 generated arrivals per tick.
+- **Sudden rush** (`burst`) — extra arrivals at ticks 6–13, then a return to baseline traffic. Queue recovery is not guaranteed.
+- **Slower checkpoint** (`policy_degraded`) — reduced Check capacity at ticks 7–19, with seeded retry decisions.
+- **Run, pause, or step** — playback controls stay beside the flow. Select a step to inspect its capacity, movement, and waiting work.
+- **Explore the run** — expand the pressure chart, counts, decision trail, ten-tick stepping, and playback speed.
+- **Replay settings** — apply or derive a seed. Shared `?seed=&scenario=` links reproduce the run from tick 0.
+
+The interface uses **Receive → Sort → Check → Finish** for the model's intake, classify, policy, and dispatch stages. Items may traverse all four steps in one tick; queues show work remaining after processing.
 
 The conservation invariant is explicit:
 
@@ -59,18 +62,19 @@ npm run start -- -p 4173
 npm run test:browser
 ```
 
-The browser smoke checks seed/scenario replay, step/reset, auto-run/pause, fullscreen/Escape, responsive layout, semantic state, and console errors. It refreshes the real capture in `docs/`.
+The browser smoke checks seed/scenario replay, every intermediate tick in batched steps, the rolling 80-tick history, reset, playback, keyboard focus, stage inspection, fullscreen/Escape, mobile targets, and browser errors. It refreshes the real capture in `docs/`.
 
 ## Automation hooks
 
-- `window.render_game_to_text()` returns concise JSON containing the truth boundary, coordinate system, seed, scenario, tick, metrics, stages, current synthetic work, and recent model decisions.
+- `window.render_game_to_text()` returns concise JSON containing the truth boundary, coordinate system, seed, scenario, tick, metrics, stages, current synthetic work, recent model decisions, and up to 80 history points. History records `{ tick, depth, arrived, completed }`; arrivals and completions are per-tick deltas.
 - `window.advanceTime(ms)` advances fixed 600 ms simulation ticks without using wall-clock values in model state.
 
 ## Architecture
 
 ```text
 src/lib/simulation.js          pure seeded state transitions
-src/components/SimulatorLab   controls, topology canvas, provenance, state hooks
+src/components/SimulatorLab   controls, tick history, inspection, state hooks
+src/components/Topology       accessible responsive stage flow
 tests/simulation.test.js       replay and conservation invariants
 scripts/browser-smoke.mjs      asserted Chromium interaction/capture
 scripts/*-scan.mjs             release truth and secret gates
