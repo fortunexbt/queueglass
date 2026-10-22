@@ -13,7 +13,7 @@
   --amber-ink: #1d1503;
   --red: #f0705f;
   --green: #6fd08a;
-  --queue: #6aa8f0;
+  --queue: #4a92e8;
   --window: rgb(255 255 255 / 4%);
   --focus: #8cc4ff;
   --tile-top: #2b3137;
@@ -567,4 +567,27 @@ kbd {
     clip-path: inset(50%);
     white-space: nowrap;
   }
+}
+
+/* 404 */
+.not-found {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 18px;
+  min-height: 100dvh;
+}
+.not-found h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(40px, 6vw, 72px);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.not-found p:not(.truth-badge) {
+  color: var(--ink-2);
+  font-size: 17px;
+}
+.not-found .button {
+  text-decoration: none;
 }

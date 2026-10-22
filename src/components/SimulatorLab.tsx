@@ -157,7 +157,7 @@ export default function SimulatorLab({
   // Start the default replay on load so the first screen is already moving.
   useEffect(() => {
     if (reducedMotionNow()) return;
-    const timeout = window.setTimeout(() => setPlaying(true), 500);
+    const timeout = window.setTimeout(() => setPlaying(true));
     return () => window.clearTimeout(timeout);
   }, []);
 

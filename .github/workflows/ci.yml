@@ -45,6 +45,4 @@ jobs:
         if: always()
         with:
           name: queueglass-browser-proof
-          path: |
-            output/
-            docs/queueglass.png
+          path: output/
