@@ -223,7 +223,7 @@ a:hover {
 /* Intro */
 .intro {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 24px 48px;
   padding-block: clamp(20px, 3vw, 36px) clamp(18px, 2.4vw, 28px);
@@ -242,7 +242,7 @@ a:hover {
   text-decoration: none;
 }
 .intro-copy p {
-  max-width: 46ch;
+  max-width: 62ch;
   margin-top: 12px;
   color: var(--ink-2);
   font-size: 17px;

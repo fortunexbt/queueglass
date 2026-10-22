@@ -79,6 +79,7 @@ export default function FlowBoard({
                 end={index === 0 ? "in" : undefined}
               />
               <section
+                id={`stage-${index}`}
                 className={styles.stage}
                 data-status={status.label.toLowerCase()}
                 aria-label={`${stage.name}: ${status.label}. ${stage.waiting} waiting, moved ${stage.handled} of ${stage.capacity}.`}

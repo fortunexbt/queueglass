@@ -214,7 +214,8 @@ export default function SimulatorLab({ example }: { example: Setup }) {
 
   const window_ = clearedBy === null ? null : { from: peak.period, to: clearedBy, label: "Peak to cleared" };
   const axisLabel = (period: number) => {
-    const date = period === 0 ? null : periodDate(setup, period);
+    if (period === 0) return "Start";
+    const date = periodDate(setup, period);
     return date
       ? new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
       : String(period);
@@ -281,7 +282,14 @@ export default function SimulatorLab({ example }: { example: Setup }) {
               <p key={sentence}>{sentence}</p>
             ))}
             {peak.backlog > 0 && (
-              <button type="button" className="text-button" onClick={() => seek(peak.period)}>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  seek(peak.period);
+                  document.getElementById("board")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+                }}
+              >
                 Show the board at the peak
               </button>
             )}
