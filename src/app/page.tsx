@@ -1,31 +1,11 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import SimulatorLab from "@/components/SimulatorLab";
-import {
-  normalizeScenario,
-  normalizeSeed,
-  normalizeSettings,
-} from "@/lib/simulation.js";
+import { EXAMPLE_FILE, exampleSetup } from "@/lib/line.js";
 
-interface PageProps {
-  searchParams: Promise<{
-    seed?: string;
-    scenario?: string;
-    traffic?: string;
-    caps?: string;
-  }>;
-}
-
-export default async function Home({ searchParams }: PageProps) {
-  const params = await searchParams;
-  const scenario = normalizeScenario(params.scenario ?? "cascade");
-  const settings = normalizeSettings(scenario, {
-    traffic: params.traffic === undefined ? undefined : Number(params.traffic),
-    capacities: params.caps?.split("-").map(Number),
-  });
-  return (
-    <SimulatorLab
-      initialSeed={normalizeSeed(params.seed || "QUEUEGLASS-7")}
-      initialScenario={scenario}
-      initialSettings={settings}
-    />
-  );
+// Read at build time: the page is static, and the worked example ships inside it.
+export default async function Home() {
+  const csv = await readFile(path.join(process.cwd(), "data", EXAMPLE_FILE), "utf8");
+  return <SimulatorLab example={exampleSetup(csv)} />;
 }

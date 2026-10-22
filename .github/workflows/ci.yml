@@ -32,7 +32,7 @@ jobs:
       - run: npm run build
       - name: Start production server
         run: npm run start -- -p 4173 > /tmp/queueglass.log 2>&1 &
-      - name: Wait for simulator
+      - name: Wait for the app
         run: |
           for attempt in {1..30}; do
             if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then exit 0; fi

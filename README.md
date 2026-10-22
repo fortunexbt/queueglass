@@ -1,31 +1,45 @@
 # queueglass
 
-**Live demo: <https://queueglass.vercel.app>**
+**Live: <https://queueglass.vercel.app>**
 
-![The queueglass board at tick 16 of the cascading failure scenario. Check is the bottleneck and the two steps before it are blocked.](docs/queueglass.webp)
+![queueglass on the BPI Challenge 2019 example: Goods receipt limits flow, the backlog peaks at 78 items on 31 Oct 2018, and the board shows that day.](docs/queueglass.webp)
 
-A seeded queue simulator. Work passes through four steps (Receive, Sort, Check, Finish). Pick a scenario and watch where it jams, then scrub back through every tick. All data is simulated in the browser.
+For a team lead who wants to know which step of a workflow (PR review, support triage, CI, procurement) limits flow, and how fast a backlog clears. Enter 2 to 8 steps with the throughput you measured for each, an optional WIP limit, and a column of real arrivals from your tracker. Queueglass replays the arrivals through the steps and tells you:
 
-## What it does
+> Goods receipt limits flow. It held work back on 20 of 367 days replayed. The backlog peaks at 78 items on 31 Oct 2018 and clears by 3 Nov 2018, 3 days later. With 47 a day at Goods receipt instead of 46, it would not clear any sooner; waiting would drop from 389 item-days to 363 item-days.
 
-- **Three presets, one click each.** Steady traffic, a burst of extra arrivals at ticks 6 to 13, and a cascading failure where Check slows to one item per tick and the jam spreads upstream through full buffers.
-- **A live board.** Items travel between the steps each tick. The step that left the most work unserved is marked as the bottleneck; steps held up by a full buffer after them are marked blocked.
-- **A replay you can scrub.** The whole 60-tick run is computed up front, so the timeline shows every step's queue over time, with bottleneck and blocked ticks marked underneath. Drag across it, use the slider, or step with the arrow keys.
-- **Settings you can change.** Raise or lower arrivals per tick and each step's capacity. The run recomputes from the same seed, and the share link carries the seed, scenario and settings.
+That is the real output for the worked example. The +1 sentence comes from rerunning the whole replay, not from a formula, and the table next to it does the same for every step.
+
+## Your data
+
+- Arrivals can be one count per line, dated counts (`2026-03-02,14`), or the Created column of a Jira, Linear or GitHub CSV export, where each date counts as one item and is tallied per day or per Monday-start week.
+- Everything runs in the browser tab. The share link carries the line after the `#`, which browsers never send to a server.
+
+## The worked example
+
+The page opens on purchase-order lines from the BPI Challenge 2019 event log: B. F. van Dongen (2019), 4TU.ResearchData, [doi:10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1](https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The log is from a multinational coatings and paints company.
+
+[`scripts/derive-bpi2019.mjs`](scripts/derive-bpi2019.mjs) checks the log against 4TU's published MD5 and counts, for each day of 2018, the lines in the CAPEX & SOCS spend area that reached each activity for the first time. The output is [`data/bpi2019-capex-socs-daily.2026-10-23.csv`](data/bpi2019-capex-socs-daily.2026-10-23.csv). CAPEX & SOCS was picked because its volume is team-sized (about 26 lines a working day) and 77% of its lines pass all three steps. The arrivals are the lines created per day. Each step's capacity is that activity's 90th-percentile daily count on the days it ran: 46 goods receipts, 49 invoice receipts and 142 invoice clearings.
+
+```bash
+# BPI_Challenge_2019.xes, 728,558,522 bytes, from the DOI above
+node scripts/derive-bpi2019.mjs path/to/BPI_Challenge_2019.xes
+```
 
 ## How it works
 
-`src/lib/simulation.js` is a pure, seeded discrete-event model. Each tick it adds arrivals (base traffic plus 0 to 2 random, plus any burst), then serves the steps from Finish back to Receive. Serving downstream first means space freed later in the line is visible to the step feeding it on the same tick, and an item moves at most one step per tick. A step serves higher-priority items first, up to its capacity. In the cascade, buffers between steps hold six items, and a step facing a full buffer stops.
+`src/lib/simulation.js` is a deterministic tandem queue. Each period's arrivals join the first step. Steps are served from the last back to the first, oldest work first, each up to its capacity, so an item moves at most one step per period. With a WIP limit, a step stops passing work on while the next step already has that many waiting. After the last arrival the replay runs on until the line is empty.
 
-`runSimulation()` precomputes one frame per tick. The UI only indexes into those frames, so playback, scrubbing and the chart always agree.
+The backlog is work that was ready to move and couldn't. The bottleneck in a period is the unblocked step that left the most of it; the step that limits flow is the one that was the bottleneck most often. `analyzeLine()` finds the peak, the first period after it with no backlog, and reruns the line with +1 capacity at each step.
 
 ```text
-src/lib/simulation.js        seeded model, bottleneck rule, precomputed runs
-src/components/SimulatorLab  page state, playback, URL and share link
-src/components/FlowBoard     the four steps, moving items, capacity controls
-src/components/Timeline      per-step queue lanes, scrubber, table view
-tests/simulation.test.js     replay, conservation, buffer and bottleneck tests
-scripts/browser-smoke.mjs    Chromium run of the main flows on desktop and phone
+src/lib/simulation.js         engine, bottleneck rule, analysis with +1 reruns
+src/lib/line.js               arrivals parsing, period labels, share link, example, headline
+src/components/SimulatorLab   page state, verdict, +1 table, playback
+src/components/LinePanel      the Your line form
+src/components/FlowBoard      the steps at the selected period
+src/components/Timeline       per-step queue lanes, scrubber, table view
+scripts/derive-bpi2019.mjs    builds the example CSV from the BPI 2019 log
 ```
 
 ## Run locally
@@ -37,22 +51,21 @@ npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000/?scenario=burst>.
-
 ## Tests
 
 ```bash
-npm run verify        # claim and secret scans, lint, types, unit tests, build
+npm run verify        # secret scan, lint, types, unit tests, build
 npm run build && npm run start -- -p 4173
 npm run test:browser  # in a second terminal
 ```
 
-The browser smoke covers playback, stepping, keyboard control, scrubbing, presets, capacity edits, seed replay through a copied link, the 404 page, the phone layout and reduced motion.
+The browser smoke loads the example and its verdict, plays and scrubs, enters a two-step line from a pasted Created column, sets a WIP limit and weekly periods, adds steps up to eight, reopens the share link in a fresh page and checks that no request carried the line, then checks the 404 page, the phone layout and reduced motion.
 
-## Limits of the demo
+## Limits
 
-- Every number is generated by a small deterministic model. There is no real system, telemetry or benchmark behind it, and it should not be presented as evidence about one.
-- Capacity is in items per tick and time is in ticks. The parameters are chosen to teach, not calibrated to anything.
-- A run is 60 ticks long. Browser automation targets Chromium.
+- Capacity is fixed per period, weekends included. Measure it on a normal busy period.
+- Every item passes every step. In the example, 23% of CAPEX & SOCS lines skip at least one step in the real log, so the example overstates the load on later steps.
+- Periods are whole days or weeks, and a line takes at least one period per step.
+- At most 1,000 periods of arrivals and 8 steps.
 
 MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -41,7 +41,7 @@
 .grid {
   --pad: 8px;
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-columns: 132px minmax(0, 1fr);
   column-gap: 12px;
 }
 .labels {
@@ -59,6 +59,12 @@
   border-bottom: 1px solid transparent;
   font-size: 13px;
   color: var(--ink-2);
+}
+.labels span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .labels b {
   font-family: var(--font-display);

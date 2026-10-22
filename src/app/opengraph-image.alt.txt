@@ -1,1 +1,1 @@
-queueglass flow board at tick 15 of the cascading failure scenario: Check is the bottleneck and Sort is blocked behind it. Simulated data.
+queueglass verdict for the BPI Challenge 2019 example: Goods receipt limits flow; the backlog peaks at 78 items on 31 Oct 2018 and clears by 3 Nov 2018, and one more per day at Goods receipt would not clear it sooner.

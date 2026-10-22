@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0 (2026-10-23)
+
+- Queueglass now replays a team's own line: 2 to 8 named steps with measured throughput, an optional WIP limit, and real arrivals pasted as counts or as the Created column of a Jira, Linear or GitHub export.
+- The headline names the step that limits flow, when the backlog peaks and clears, and what one more unit of capacity at that step changes, from a full rerun. A table reruns +1 at every step.
+- The line lives in the URL fragment, so it never reaches a server.
+- Added a worked example from the BPI Challenge 2019 log (CC BY 4.0) with its derivation script and derived CSV.
+- Removed the Steady, Burst and Cascade presets, seeds and random arrivals, the unshown event log, compute units, the claim scan and the split-flap text.
+
 ## 1.1.0 (2026-10-22)
 
 - Rebuilt the interface as a departure-board flow: items move between steps, the bottleneck is highlighted and blocked steps are marked.
