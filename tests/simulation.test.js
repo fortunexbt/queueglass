@@ -1,79 +1,53 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  CAPACITY_RANGE,
-  RUN_LENGTH,
-  STAGES,
-  TRAFFIC_RANGE,
-  createSimulation,
-  findBottleneck,
-  getSnapshot,
-  normalizeSeed,
-  normalizeSettings,
-  runSimulation,
-  stepSimulation,
-} from "../src/lib/simulation.js";
+import { analyzeLine, clearedBy, findBottleneck, normalizeLine, runSimulation } from "../src/lib/simulation.js";
 
-test("the same seed and scenario produce the same replay", () => {
-  const left = stepSimulation(createSimulation("QUEUEGLASS-7", "burst"), 30);
-  const right = stepSimulation(createSimulation("QUEUEGLASS-7", "burst"), 30);
-  assert.deepEqual(getSnapshot(left), getSnapshot(right));
+const stages = (...capacities) => capacities.map((capacity, index) => ({ name: `S${index + 1}`, capacity }));
+const burst = [3, 3, 9, 9, 9, 9, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3];
+
+test("the same line produces the same replay", () => {
+  const line = { stages: stages(4, 4, 3, 4), bufferLimit: 6, arrivals: burst };
+  assert.deepEqual(runSimulation(line), runSimulation(line));
 });
 
-test("chunked stepping is equivalent to one deterministic run", () => {
-  const initial = createSimulation("QUEUE-11", "cascade");
-  const chunked = stepSimulation(stepSimulation(initial, 7), 19);
-  const continuous = stepSimulation(initial, 26);
-  assert.deepEqual(chunked, continuous);
-});
-
-test("work conservation holds across every scenario", () => {
-  for (const scenario of ["nominal", "burst", "cascade"]) {
-    const state = stepSimulation(createSimulation("CONSERVE-3", scenario), 60);
-    assert.equal(state.arrivals, state.completed + state.queue.length);
-    assert.ok(state.computeUnits >= state.completed);
+test("work is conserved: everything that arrives finishes or is still in the line", () => {
+  for (const bufferLimit of [null, 2, 6]) {
+    const frames = runSimulation({ stages: stages(4, 2, 3, 5), bufferLimit, arrivals: burst });
+    for (const frame of frames.slice(1)) {
+      const arrived = burst.slice(0, frame.period).reduce((sum, count) => sum + count, 0);
+      assert.equal(arrived, frame.totalFinished + frame.inLine);
+    }
+    assert.equal(frames.at(-1).inLine, 0);
   }
 });
 
-test("burst pressure creates a larger deterministic queue than nominal flow", () => {
-  const nominal = stepSimulation(createSimulation("PRESSURE-9", "nominal"), 13);
-  const burst = stepSimulation(createSimulation("PRESSURE-9", "burst"), 13);
-  assert.ok(burst.queue.length > nominal.queue.length);
-  assert.ok(burst.arrivals > nominal.arrivals);
+test("the run drains after the last arrival and stops once the line is empty", () => {
+  const frames = runSimulation({ stages: stages(2, 2), bufferLimit: null, arrivals: [6] });
+  assert.deepEqual(frames.map((frame) => frame.finished), [0, 0, 2, 2, 2]);
+  assert.equal(frames.at(-1).inLine, 0);
 });
 
-test("a degraded Check step records only synthetic retry decisions", () => {
-  const state = stepSimulation(createSimulation("RETRY-2", "cascade"), 35);
-  assert.ok(state.retries > 0);
-  assert.ok(state.events.every((event) => !/client|identity|revenue|observed/i.test(event.message)));
-});
-
-test("seed normalization is bounded and replay-safe", () => {
-  assert.equal(normalizeSeed("  lab replay / 42  "), "LAB-REPLAY-42");
-  assert.equal(normalizeSeed(""), "LAB-42");
-  assert.equal(normalizeSeed("x".repeat(80)).length, 32);
-});
-
-test("an item advances at most one step per tick", () => {
-  let state = createSimulation("ONE-STEP-1", "nominal");
-  for (let tick = 1; tick <= 20; tick += 1) {
-    const before = new Map(state.queue.map((item) => [item.id, item.stage]));
-    state = stepSimulation(state);
-    for (const item of state.queue) {
-      if (before.has(item.id)) assert.ok(item.stage - before.get(item.id) <= 1);
+test("an item advances at most one step per period", () => {
+  const frames = runSimulation({ stages: stages(9, 9, 9, 9), bufferLimit: null, arrivals: [5, 5, 5] });
+  // With spare capacity everywhere, four steps take exactly four periods.
+  assert.equal(frames[4].meanPeriodsToFinish, 4);
+  for (const [period, frame] of frames.entries()) {
+    if (period === 0) continue;
+    for (const [index, stage] of frame.stages.entries()) {
+      const before = frames[period - 1].stages[index].waiting + (index === 0 ? frame.arrived : 0);
+      assert.ok(stage.handled <= before);
     }
   }
 });
 
-test("a full buffer blocks the step feeding it in the cascade scenario", () => {
-  const frames = runSimulation("BUFFER-4", "cascade");
-  const blocked = frames.flatMap((frame) => frame.stages.filter((stage) => stage.blocked));
-  assert.ok(blocked.length > 0);
+test("a full buffer blocks the step feeding it, and never the last step", () => {
+  const frames = runSimulation({ stages: stages(4, 4, 1, 4), bufferLimit: 6, arrivals: burst });
+  assert.ok(frames.some((frame) => frame.stages[1].blocked));
   for (const frame of frames.slice(1)) {
     for (const stage of frame.stages.slice(1)) assert.ok(stage.waiting <= 6 + stage.capacity);
+    assert.equal(frame.stages.at(-1).blocked, false);
   }
-  assert.ok(frames.slice(1).every((frame) => frame.stages.every((stage) => !stage.blocked || stage.id !== "dispatch")));
 });
 
 test("the bottleneck is the unblocked step with the most unserved work", () => {
@@ -83,31 +57,55 @@ test("the bottleneck is the unblocked step with the most unserved work", () => {
   assert.equal(findBottleneck([stage(9, true), stage(3), stage(0), stage(0)]), 1);
 });
 
-test("the cascade names Check as the bottleneck during the fault", () => {
-  const frame = runSimulation("CASCADE-5", "cascade")[15];
-  assert.equal(frame.bottleneck, "policy");
-  assert.ok(frame.stages[2].faulted);
-});
-
-test("a precomputed run is deterministic and has one frame per tick", () => {
-  const left = runSimulation("RUN-1", "burst");
-  const right = runSimulation("RUN-1", "burst");
-  assert.equal(left.length, RUN_LENGTH + 1);
-  assert.deepEqual(left, right);
-  assert.deepEqual(left.map((frame) => frame.tick), Array.from({ length: RUN_LENGTH + 1 }, (_, tick) => tick));
-  assert.deepEqual(getSnapshot(stepSimulation(createSimulation("RUN-1", "burst"), 25)).metrics, left[25].metrics);
-});
-
-test("settings are clamped to their ranges and fall back to the preset", () => {
-  const clamped = normalizeSettings("nominal", { traffic: 99, capacities: [0, 99, 2.7] });
-  assert.equal(clamped.traffic, TRAFFIC_RANGE[1]);
-  assert.deepEqual(clamped.capacities, [CAPACITY_RANGE[0], CAPACITY_RANGE[1], 2, 4]);
-  assert.deepEqual(normalizeSettings("cascade", {}), { traffic: 1, capacities: [4, 4, 3, 4] });
-  assert.equal(STAGES.length, 4);
-});
-
 test("lower capacity at one step builds a deeper queue", () => {
-  const base = stepSimulation(createSimulation("CAP-8", "nominal"), 40);
-  const pinched = stepSimulation(createSimulation("CAP-8", "nominal", { capacities: [4, 4, 1, 4] }), 40);
-  assert.ok(pinched.queue.length > base.queue.length);
+  const peak = (line) => Math.max(...runSimulation(line).map((frame) => frame.inLine));
+  const arrivals = new Array(30).fill(3);
+  assert.ok(peak({ stages: stages(4, 4, 2, 4), bufferLimit: null, arrivals }) > peak({ stages: stages(4, 4, 4, 4), bufferLimit: null, arrivals }));
+});
+
+test("backlog counts only work that was ready to move and could not", () => {
+  const smooth = runSimulation({ stages: stages(5, 5, 5), bufferLimit: null, arrivals: [5, 5, 5, 5] });
+  assert.ok(smooth.every((frame) => frame.backlog === 0));
+  assert.ok(smooth.slice(1, 4).every((frame) => frame.inLine > 0));
+  const jam = runSimulation({ stages: stages(5, 2, 5), bufferLimit: null, arrivals: [5, 5, 0, 0, 0, 0] });
+  assert.deepEqual(jam.map((frame) => frame.backlog).slice(0, 7), [0, 0, 3, 6, 4, 2, 0]);
+  assert.equal(clearedBy(jam, 3), 6);
+});
+
+test("the analysis names the limiting step, the peak, the clear period and real +1 runs", () => {
+  const result = analyzeLine({ stages: stages(5, 2, 5), bufferLimit: null, arrivals: [5, 5, 0, 0, 0, 0] });
+  assert.equal(result.limiting, 1);
+  assert.deepEqual(result.peak, { period: 3, backlog: 6 });
+  assert.equal(result.clearedBy, 6);
+  // +1 at the limiting step is rerun, not estimated: 3 per period clears a period sooner.
+  assert.equal(result.whatIf[1].capacity, 3);
+  assert.equal(result.whatIf[1].clearedBy, 5);
+  assert.equal(result.whatIf[0].clearedBy, 6);
+  assert.equal(result.whatIf[2].clearedBy, 6);
+  assert.equal(result.heldBack, 15);
+  assert.equal(result.whatIf[1].heldBack, 7);
+});
+
+test("a line that keeps up has no limiting step and no backlog", () => {
+  const result = analyzeLine({ stages: stages(9, 9), bufferLimit: null, arrivals: [3, 4, 5] });
+  assert.equal(result.limiting, -1);
+  assert.equal(result.peak.backlog, 0);
+  assert.equal(result.clearedBy, null);
+});
+
+test("lines are clamped to what the engine accepts", () => {
+  assert.equal(normalizeLine({ stages: stages(3), arrivals: [1] }), null);
+  assert.equal(normalizeLine({ stages: stages(3, 3), arrivals: [] }), null);
+  assert.equal(normalizeLine({ stages: stages(3, 3), arrivals: ["x"] }), null);
+  const line = normalizeLine({
+    stages: [{ name: "  ", capacity: 0 }, { name: "Review".repeat(10), capacity: 2.7 }, ...stages(1, 1, 1, 1, 1, 1, 1)],
+    bufferLimit: "",
+    arrivals: [-4, "7"],
+  });
+  assert.equal(line.stages.length, 8);
+  assert.deepEqual(line.stages[0], { name: "Step 1", capacity: 1 });
+  assert.equal(line.stages[1].name.length, 24);
+  assert.equal(line.stages[1].capacity, 2);
+  assert.equal(line.bufferLimit, null);
+  assert.deepEqual(line.arrivals, [0, 7]);
 });
