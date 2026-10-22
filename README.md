@@ -1,95 +1,58 @@
-# Queueglass
+# queueglass
 
-**SIMULATED · LOCAL · SEEDED · REPLAYABLE**
+**Live demo: <https://queueglass.vercel.app>**
 
-A small, deterministic queue simulator. Send work through four steps, change the traffic, and see where it gets stuck. All data is generated locally by an educational model.
+![The queueglass board at tick 16 of the cascading failure scenario. Check is the bottleneck and the two steps before it are blocked.](docs/queueglass.webp)
 
-![Queueglass running a seeded burst scenario](docs/queueglass.png)
+A seeded queue simulator. Work passes through four steps (Receive, Sort, Check, Finish). Pick a scenario and watch where it jams, then scrub back through every tick. All data is simulated in the browser.
 
-## Truth boundary
+## What it does
 
-Every displayed value is generated in the browser from a seed and one of three toy scenarios. The repository contains:
+- **Three presets, one click each.** Steady traffic, a burst of extra arrivals at ticks 6 to 13, and a cascading failure where Check slows to one item per tick and the jam spreads upstream through full buffers.
+- **A live board.** Items travel between the steps each tick. The step that left the most work unserved is marked as the bottleneck; steps held up by a full buffer after them are marked blocked.
+- **A replay you can scrub.** The whole 60-tick run is computed up front, so the timeline shows every step's queue over time, with bottleneck and blocked ticks marked underneath. Drag across it, use the slider, or step with the arrow keys.
+- **Settings you can change.** Raise or lower arrivals per tick and each step's capacity. The run recomputes from the same seed, and the share link carries the seed, scenario and settings.
 
-- no production telemetry or network client;
-- no identity, account, communication, monetary, commercial, or staffing data;
-- no AI inference or third-party services;
-- no measured throughput, latency, accuracy, uptime, cost, savings, or service-level claims.
+## How it works
 
-Item counts are synthetic. Capacity and compute are arbitrary model units. Latency is expressed only as **simulation ticks**. Outputs are not benchmarks, forecasts, architecture recommendations, or evidence of real operational performance.
+`src/lib/simulation.js` is a pure, seeded discrete-event model. Each tick it adds arrivals (base traffic plus 0 to 2 random, plus any burst), then serves the steps from Finish back to Receive. Serving downstream first means space freed later in the line is visible to the step feeding it on the same tick, and an item moves at most one step per tick. A step serves higher-priority items first, up to its capacity. In the cascade, buffers between steps hold six items, and a step facing a full buffer stops.
 
-## What can be explored
-
-- **Steady traffic** (`nominal`) — 1–3 generated arrivals per tick.
-- **Sudden rush** (`burst`) — extra arrivals at ticks 6–13, then a return to baseline traffic. Queue recovery is not guaranteed.
-- **Slower checkpoint** (`policy_degraded`) — reduced Check capacity at ticks 7–19, with seeded retry decisions.
-- **Run, pause, or step** — playback controls stay beside the flow. Select a step to inspect its capacity, movement, and waiting work.
-- **Explore the run** — expand the pressure chart, counts, decision trail, ten-tick stepping, and playback speed.
-- **Replay settings** — apply or derive a seed. Shared `?seed=&scenario=` links reproduce the run from tick 0.
-
-The interface uses **Receive → Sort → Check → Finish** for the model's intake, classify, policy, and dispatch stages. Items may traverse all four steps in one tick; queues show work remaining after processing.
-
-The conservation invariant is explicit:
+`runSimulation()` precomputes one frame per tick. The UI only indexes into those frames, so playback, scrubbing and the chart always agree.
 
 ```text
-synthetic arrivals = completed items + items still in the model
+src/lib/simulation.js        seeded model, bottleneck rule, precomputed runs
+src/components/SimulatorLab  page state, playback, URL and share link
+src/components/FlowBoard     the four steps, moving items, capacity controls
+src/components/Timeline      per-step queue lanes, scrubber, table view
+tests/simulation.test.js     replay, conservation, buffer and bottleneck tests
+scripts/browser-smoke.mjs    Chromium run of the main flows on desktop and phone
 ```
 
 ## Run locally
 
-Requires Node.js 24 or a compatible Node release supported by Next.js 16.
+Node.js 24.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000/?seed=QUEUEGLASS-7&scenario=burst>.
+Open <http://localhost:3000/?scenario=burst>.
 
-## Verify
-
-```bash
-npm run verify
-```
-
-The verification gate scans for removed claim language and likely secrets, lints, type-checks, runs six deterministic/invariant tests, and creates a production build.
-
-For the real-browser smoke, start the built app and run:
+## Tests
 
 ```bash
-npm run build
-npm run start -- -p 4173
-# in another terminal
-npm run test:browser
+npm run verify        # claim and secret scans, lint, types, unit tests, build
+npm run build && npm run start -- -p 4173
+npm run test:browser  # in a second terminal
 ```
 
-The browser smoke checks seed/scenario replay, every intermediate tick in batched steps, the rolling 80-tick history, reset, playback, keyboard focus, stage inspection, fullscreen/Escape, mobile targets, and browser errors. It refreshes the real capture in `docs/`.
+The browser smoke covers playback, stepping, keyboard control, scrubbing, presets, capacity edits, seed replay through a copied link, the 404 page, the phone layout and reduced motion.
 
-## Automation hooks
+## Limits of the demo
 
-- `window.render_game_to_text()` returns concise JSON containing the truth boundary, coordinate system, seed, scenario, tick, metrics, stages, current synthetic work, recent model decisions, and up to 80 history points. History records `{ tick, depth, arrived, completed }`; arrivals and completions are per-tick deltas.
-- `window.advanceTime(ms)` advances fixed 600 ms simulation ticks without using wall-clock values in model state.
+- Every number is generated by a small deterministic model. There is no real system, telemetry or benchmark behind it, and it should not be presented as evidence about one.
+- Capacity is in items per tick and time is in ticks. The parameters are chosen to teach, not calibrated to anything.
+- A run is 60 ticks long. Browser automation targets Chromium.
 
-## Architecture
-
-```text
-src/lib/simulation.js          pure seeded state transitions
-src/components/SimulatorLab   controls, tick history, inspection, state hooks
-src/components/Topology       accessible responsive stage flow
-tests/simulation.test.js       replay and conservation invariants
-scripts/browser-smoke.mjs      asserted Chromium interaction/capture
-scripts/*-scan.mjs             release truth and secret gates
-```
-
-## Provenance
-
-This public-facing lab is a clean-room reframing of a contained local interface prototype. The staged revival removed its original theatrical data generator, timer-driven metrics, unsupported operational language, named external connectors, and identity-like examples. No adjacent company documents, dashboards, notes, screenshots, workflows, or datasets were inspected or copied into this project.
-
-## Limitations
-
-- The queue model is intentionally small and single-process.
-- Capacities, priorities, retries, and compute costs are pedagogical parameters.
-- Scenario behavior is deterministic, not statistically calibrated.
-- Browser automation currently targets Chromium.
-- The project must not be presented as evidence about any company, product, team, deployment, or operating environment.
-
-MIT licensed. Contributions that preserve the truth boundary are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md).

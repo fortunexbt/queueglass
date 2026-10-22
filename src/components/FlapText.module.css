@@ -1,0 +1,82 @@
+.flap {
+  display: inline-flex;
+  --tile-w: 0.78em;
+  --tile-h: 1.22em;
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.flap[data-size="sm"] {
+  --tile-w: 0.72em;
+  font-size: 13px;
+}
+.flap[data-size="sm"] .tiles {
+  gap: 1px;
+}
+.flap[data-size="md"] {
+  font-size: 22px;
+}
+.flap[data-size="lg"] {
+  font-size: clamp(28px, 3.4vw, 40px);
+}
+.tiles {
+  display: inline-flex;
+  gap: 2px;
+  perspective: 240px;
+}
+.tile {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--tile-w);
+  height: var(--tile-h);
+  border-radius: 3px;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - 0.5px),
+      var(--tile-seam) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(to bottom, var(--tile-top), var(--tile-bottom));
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 4%) inset,
+    0 2px 3px rgb(0 0 0 / 45%);
+  transform-origin: 50% 50%;
+  animation: flip 260ms var(--ease-out) both;
+}
+.tile[data-blank] {
+  background: linear-gradient(to bottom, var(--tile-top), var(--tile-bottom));
+  opacity: 0.55;
+}
+.flap[data-tone="amber"] .tile {
+  color: var(--amber-ink);
+  --tile-top: var(--amber);
+  --tile-bottom: var(--amber-deep);
+  --tile-seam: rgb(0 0 0 / 35%);
+}
+.flap[data-tone="red"] .tile {
+  color: var(--red);
+}
+.flap[data-tone="green"] .tile {
+  color: var(--green);
+}
+
+@keyframes flip {
+  from {
+    transform: rotateX(78deg);
+    filter: brightness(1.8);
+  }
+  to {
+    transform: none;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile {
+    animation: none;
+  }
+}
