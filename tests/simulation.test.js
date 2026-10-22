@@ -43,7 +43,7 @@ test("burst pressure creates a larger deterministic queue than nominal flow", ()
   assert.ok(burst.arrivals > nominal.arrivals);
 });
 
-test("policy degradation records only synthetic retry decisions", () => {
+test("a degraded Check step records only synthetic retry decisions", () => {
   const state = stepSimulation(createSimulation("RETRY-2", "cascade"), 35);
   assert.ok(state.retries > 0);
   assert.ok(state.events.every((event) => !/client|identity|revenue|observed/i.test(event.message)));
@@ -83,7 +83,7 @@ test("the bottleneck is the unblocked step with the most unserved work", () => {
   assert.equal(findBottleneck([stage(9, true), stage(3), stage(0), stage(0)]), 1);
 });
 
-test("the cascade names Policy as the bottleneck during the fault", () => {
+test("the cascade names Check as the bottleneck during the fault", () => {
   const frame = runSimulation("CASCADE-5", "cascade")[15];
   assert.equal(frame.bottleneck, "policy");
   assert.ok(frame.stages[2].faulted);

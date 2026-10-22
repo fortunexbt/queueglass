@@ -1,16 +1,16 @@
 // Deterministic, synthetic queue simulator. No production data or wall-clock input.
 
 export const STAGES = [
-  { id: "intake", label: "Intake", cost: 1 },
-  { id: "classify", label: "Classify", cost: 2 },
-  { id: "policy", label: "Policy", cost: 3 },
-  { id: "dispatch", label: "Dispatch", cost: 1 },
+  { id: "intake", label: "Receive", cost: 1 },
+  { id: "classify", label: "Sort", cost: 2 },
+  { id: "policy", label: "Check", cost: 3 },
+  { id: "dispatch", label: "Finish", cost: 1 },
 ];
 
 export const RUN_LENGTH = 60;
 export const TRAFFIC_RANGE = /** @type {const} */ ([0, 4]);
 export const CAPACITY_RANGE = /** @type {const} */ ([1, 8]);
-const ARRIVAL_JITTER = 2;
+export const ARRIVAL_JITTER = 2;
 
 /**
  * @typedef {{from:number, to:number, extraArrivals:number}} Burst
@@ -23,7 +23,7 @@ export const SCENARIOS = {
   nominal: {
     id: "nominal",
     label: "Steady",
-    summary: "Arrivals stay below every step's capacity.",
+    summary: "Arrivals stay below every step's capacity, so queues stay short.",
     traffic: 1,
     capacities: [4, 4, 3, 4],
     burst: null,
@@ -43,7 +43,7 @@ export const SCENARIOS = {
   cascade: {
     id: "cascade",
     label: "Cascading failure",
-    summary: "Policy degrades from tick 10 to tick 24 and buffers between steps hold six items.",
+    summary: "Check slows to one item per tick from tick 10 to tick 24. Buffers between steps hold six items, so the jam spreads upstream.",
     traffic: 1,
     capacities: [4, 4, 3, 4],
     burst: null,
@@ -319,7 +319,7 @@ export function getSnapshot(state) {
  */
 export function runSimulation(seed, scenarioId, overrides = {}, length = RUN_LENGTH) {
   let state = createSimulation(seed, scenarioId, overrides);
-  const frames = [getSnapshot(state)];
+  const frames = [{ ...getSnapshot(state), arrived: 0, finished: 0 }];
   for (let tick = 1; tick <= length; tick += 1) {
     const previous = state;
     state = stepOnce(state);

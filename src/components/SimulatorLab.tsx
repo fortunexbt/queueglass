@@ -1,109 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Topology, { STEP_NAMES } from "@/components/Topology";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+
+import FlapText from "@/components/FlapText";
+import FlowBoard, { type Frame } from "@/components/FlowBoard";
+import Timeline from "@/components/Timeline";
 import {
+  RUN_LENGTH,
   SCENARIOS,
-  createSimulation,
-  getSnapshot,
+  STAGES,
   hashSeed,
-  stepSimulation,
+  normalizeSeed,
+  normalizeSettings,
+  runSimulation,
 } from "@/lib/simulation.js";
 
 type ScenarioId = keyof typeof SCENARIOS;
-type HistoryPoint = {
-  tick: number;
-  depth: number;
-  arrived: number;
-  completed: number;
-};
-type IconName =
-  | "play"
-  | "pause"
-  | "step"
-  | "reset"
-  | "share"
-  | "expand"
-  | "shuffle";
+type Settings = ReturnType<typeof normalizeSettings>;
+type IconName = "play" | "pause" | "next" | "back" | "reset" | "share" | "shuffle";
 
-const TICK_MS = 600;
-const DEFAULT_SEED = "QUEUEGLASS-7";
-const PROVENANCE =
-  "All values are generated locally by a deterministic toy model. No production telemetry, identity records, external services, benchmarks, monetary estimates, or observed operational results are used.";
-const SCENARIO_PRESENTATION: Record<
-  ScenarioId,
-  {
-    label: string;
-    description: string;
-    window: [number, number] | null;
-  }
-> = {
-  nominal: {
-    label: "Steady traffic",
-    description:
-      "Work arrives at a steady pace. Small queues can still build up.",
-    window: null,
-  },
-  burst: {
-    label: "Sudden rush",
-    description:
-      "A rush of extra work arrives at tick 6. Normal traffic returns at tick 14.",
-    window: [6, 13],
-  },
-  policy_degraded: {
-    label: "Slower checkpoint",
-    description:
-      "The Check step slows down at tick 7 and returns to normal at tick 20.",
-    window: [7, 19],
-  },
-};
+const BASE_TICK_MS = 600;
+const SPEEDS = [0.5, 1, 2];
 
-const STAGE_NOTES: Record<string, string> = {
-  intake: "Admits incoming work into the model.",
-  classify: "Orders work by priority, then age.",
-  policy: "Applies the scenario’s capacity and retry rules.",
-  dispatch: "Completes work and records its time in the model.",
-};
-
-function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
     play: <path d="m8 5 11 7-11 7Z" />,
-    pause: (
-      <>
-        <path d="M8 5v14M16 5v14" />
-      </>
-    ),
-    step: (
-      <>
-        <path d="m5 5 10 7-10 7Z" />
-        <path d="M19 5v14" />
-      </>
-    ),
-    reset: (
-      <>
-        <path d="M4 10a8 8 0 1 1 1 7M4 4v6h6" />
-      </>
-    ),
-    share: (
-      <>
-        <path d="M12 15V3m-4 4 4-4 4 4M5 12v8h14v-8" />
-      </>
-    ),
-    expand: <path d="M9 4H4v5m11-5h5v5M4 15v5h5m6 0h5v-5" />,
+    pause: <path d="M8 5v14M16 5v14" />,
+    next: <path d="m6 5 9 7-9 7ZM18 5v14" />,
+    back: <path d="m18 5-9 7 9 7ZM6 5v14" />,
+    reset: <path d="M4 10a8 8 0 1 1 1 7M4 4v6h6" />,
+    share: <path d="M12 15V3m-4 4 4-4 4 4M5 12v8h14v-8" />,
     shuffle: (
-      <>
-        <path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 3-2 4-4m4-4c1-2 2-4 4-4h3m-4-4 4 4-4 4" />
-      </>
+      <path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 3-2 4-4m4-4c1-2 2-4 4-4h3m-4-4 4 4-4 4" />
     ),
   };
   return (
     <svg
-      width={size}
-      height={size}
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.65"
+      strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -115,832 +53,460 @@ function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
 
 function BrandMark() {
   return (
-    <svg
-      className="brand-mark"
-      width="30"
-      height="30"
-      viewBox="0 0 30 30"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M5 5h8v8H5zM17 17h8v8h-8z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path d="M13 9h8v8M9 13v8h8" stroke="currentColor" strokeWidth="2" />
-      <path d="m21 8 4 4m-8 10 4 4" stroke="currentColor" strokeWidth="2" />
+    <svg className="brand-mark" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+      <rect x="2" y="4" width="7" height="20" rx="1.5" />
+      <rect x="10.5" y="4" width="7" height="20" rx="1.5" />
+      <rect x="19" y="4" width="7" height="20" rx="1.5" data-hot />
+      <path d="M2 14h24" />
     </svg>
   );
 }
 
-function newReplay(seed: string, scenario: ScenarioId) {
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const listLabels = (labels: string[]) =>
+  labels.length < 2 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+
+function describe(frame: Frame) {
+  if (frame.tick === 0) {
+    return {
+      title: "Ready at tick 0",
+      detail: "Press play to send simulated work through the four steps.",
+    };
+  }
+  const blocked = frame.stages.filter((stage) => stage.blocked).map((stage) => stage.label);
+  const behind = blocked.length
+    ? ` ${listLabels(blocked)} ${blocked.length === 1 ? "is" : "are"} blocked behind it.`
+    : "";
+  const bottleneck = frame.stages.find((stage) => stage.id === frame.bottleneck);
+  if (bottleneck) {
+    return {
+      title: `${bottleneck.label} is the bottleneck`,
+      detail: `${plural(bottleneck.leftover, "item")} could not move on from ${bottleneck.label} this tick. It moves at most ${bottleneck.capacity} per tick${bottleneck.faulted ? " while it is slowed" : ""}.${behind}`,
+    };
+  }
+  if (blocked.length) {
+    return {
+      title: `${listLabels(blocked)} ${blocked.length === 1 ? "is" : "are"} blocked`,
+      detail: "The buffer after it is full, so work holds where it is.",
+    };
+  }
   return {
-    simulation: createSimulation(seed, scenario),
-    history: [
-      { tick: 0, depth: 0, arrived: 0, completed: 0 },
-    ] as HistoryPoint[],
+    title: "Everything is getting through",
+    detail: `${plural(frame.arrived, "item")} arrived and ${frame.finished} finished on this tick.`,
   };
 }
 
-function PressureChart({
-  history,
-  scenario,
-}: {
-  history: HistoryPoint[];
-  scenario: ScenarioId;
-}) {
-  const first = history[0].tick;
-  const last = history[history.length - 1];
-  const end = Math.max(first + 30, last.tick);
-  const ceiling = Math.max(
-    8,
-    Math.ceil(Math.max(...history.map((point) => point.depth)) / 4) * 4,
-  );
-  const x = (tick: number) => 38 + ((tick - first) / (end - first)) * 548;
-  const y = (depth: number) => 151 - (depth / ceiling) * 128;
-  const line = history
-    .map(
-      (point, index) =>
-        `${index ? "L" : "M"}${x(point.tick)},${y(point.depth)}`,
-    )
-    .join(" ");
-  const window = SCENARIO_PRESENTATION[scenario].window;
-  const bandStart = window ? Math.max(first, window[0]) : 0;
-  const bandEnd = window ? Math.min(end, window[1]) : 0;
-  return (
-    <div className="pressure-chart">
-      <svg
-        viewBox="0 0 610 185"
-        role="img"
-        aria-label={`Queue depth over ${history.length} recorded ticks. Current queue: ${last.depth} items.`}
-      >
-        {[0, 1, 2, 3, 4].map((n) => (
-          <g key={n}>
-            <line
-              x1="38"
-              x2="586"
-              y1={y((ceiling * n) / 4)}
-              y2={y((ceiling * n) / 4)}
-              stroke="var(--line)"
-              strokeDasharray={n ? "2 4" : undefined}
-            />
-            <text x="25" y={y((ceiling * n) / 4) + 4} textAnchor="end">
-              {(ceiling * n) / 4}
-            </text>
-          </g>
-        ))}
-        {window && bandEnd >= bandStart && (
-          <g>
-            <rect
-              x={x(bandStart)}
-              y="17"
-              width={Math.max(0, x(bandEnd) - x(bandStart))}
-              height="134"
-              fill="var(--orange)"
-              opacity=".075"
-            />
-            <text x={x(bandStart) + 5} y="13" className="chart-annotation">
-              {scenario === "burst" ? "ARRIVAL BURST" : "REDUCED CAPACITY"}
-            </text>
-          </g>
-        )}
-        <path
-          d={`${line} L${x(last.tick)},151 L${x(first)},151 Z`}
-          fill="var(--blue)"
-          opacity=".055"
-        />
-        <path
-          d={line}
-          stroke="var(--blue)"
-          strokeWidth="2"
-          fill="none"
-          strokeLinejoin="round"
-        />
-        <circle
-          cx={x(last.tick)}
-          cy={y(last.depth)}
-          r="3.5"
-          fill="var(--blue)"
-          stroke="var(--surface)"
-          strokeWidth="1.5"
-        />
-        {[first, Math.round((first + end) / 2), end].map((tick) => (
-          <text key={tick} x={x(tick)} y="175" textAnchor="middle">
-            T{String(tick).padStart(2, "0")}
-          </text>
-        ))}
-        {last.tick === 0 && (
-          <g>
-            <text x="310" y="76" textAnchor="middle" className="chart-empty">
-              Every queue has a starting point.
-            </text>
-            <text x="310" y="97" textAnchor="middle">
-              Run the model to trace what happens next.
-            </text>
-          </g>
-        )}
-      </svg>
-    </div>
-  );
+function runInsight(frames: Frame[]) {
+  const counts = STAGES.map((stage) => ({
+    label: stage.label,
+    ticks: frames.filter((frame) => frame.bottleneck === stage.id).length,
+  }))
+    .filter((entry) => entry.ticks > 0)
+    .sort((left, right) => right.ticks - left.ticks);
+  if (!counts.length) {
+    return "No step was a bottleneck in this run. Raise the arrivals or lower a capacity to make one.";
+  }
+  const [first, ...rest] = counts;
+  const others = rest.map((entry) => `${entry.label} on ${entry.ticks}`);
+  return `Over all ${RUN_LENGTH} ticks, ${first.label} was the bottleneck on ${first.ticks}${others.length ? `, ${listLabels(others)}` : ""}.`;
 }
+
+const sameSettings = (left: Settings, right: Settings) =>
+  left.traffic === right.traffic && left.capacities.every((value, index) => value === right.capacities[index]);
+
+function subscribeReducedMotion(onChange: () => void) {
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+const reducedMotionNow = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 declare global {
   interface Window {
     render_game_to_text?: () => string;
-    advanceTime?: (ms: number) => void;
   }
 }
 
 export default function SimulatorLab({
-  initialSeed = DEFAULT_SEED,
-  initialScenario = "nominal",
+  initialSeed,
+  initialScenario,
+  initialSettings,
 }: {
-  initialSeed?: string;
-  initialScenario?: ScenarioId;
+  initialSeed: string;
+  initialScenario: ScenarioId;
+  initialSettings: Settings;
 }) {
-  const [replay, setReplay] = useState(() =>
-    newReplay(initialSeed, initialScenario),
-  );
-  const replayRef = useRef(replay);
-  const { simulation, history } = replay;
-  const [seedDraft, setSeedDraft] = useState(simulation.seed);
-  const [running, setRunning] = useState(false);
+  const [seed, setSeed] = useState(initialSeed);
+  const [seedDraft, setSeedDraft] = useState(initialSeed);
+  const [scenarioId, setScenarioId] = useState(initialScenario);
+  const [settings, setSettings] = useState(initialSettings);
+  const [tick, setTick] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [selectedStage, setSelectedStage] = useState("");
-  const [notice, setNotice] = useState(
-    "Your experiment stays in this browser.",
-  );
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [copyFeedback, setCopyFeedback] = useState<
-    "idle" | "copied" | "blocked"
-  >("idle");
-  const virtualRemainderRef = useRef(0);
-  const labRef = useRef<HTMLElement>(null);
+  const [notice, setNotice] = useState("");
+  const [copied, setCopied] = useState<"idle" | "copied" | "blocked">("idle");
+  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, reducedMotionNow, () => true);
 
-  const replaceReplay = useCallback((next: ReturnType<typeof newReplay>) => {
-    replayRef.current = next;
-    setReplay(next);
+  const frames = useMemo(() => runSimulation(seed, scenarioId, settings), [seed, scenarioId, settings]);
+  const frame = frames[tick];
+  const tickMs = BASE_TICK_MS / speed;
+  const preset = SCENARIOS[scenarioId];
+  const edited = !sameSettings(settings, normalizeSettings(scenarioId));
+  const message = describe(frame);
+
+  // Start the default replay on load so the first screen is already moving.
+  useEffect(() => {
+    if (reducedMotionNow()) return;
+    const timeout = window.setTimeout(() => setPlaying(true), 500);
+    return () => window.clearTimeout(timeout);
   }, []);
 
-  const advance = useCallback(
-    (count: number) => {
-      const ticks = Math.max(0, Math.min(10000, Math.floor(count)));
-      if (!Number.isFinite(ticks) || ticks === 0) return;
-      let next = replayRef.current.simulation;
-      const points = [...replayRef.current.history];
-      for (let index = 0; index < ticks; index += 1) {
-        const previous = next;
-        next = stepSimulation(previous, 1);
-        points.push({
-          tick: next.tick,
-          depth: next.queue.length,
-          arrived: next.arrivals - previous.arrivals,
-          completed: next.completed - previous.completed,
-        });
-        if (points.length > 80) points.shift();
-      }
-      replaceReplay({ simulation: next, history: points });
-    },
-    [replaceReplay],
-  );
-
-  const reset = useCallback(
-    (
-      seed = seedDraft,
-      scenario: ScenarioId = replayRef.current.simulation.scenarioId,
-    ) => {
-      const next = newReplay(seed, scenario);
-      setSeedDraft(next.simulation.seed);
-      virtualRemainderRef.current = 0;
-      replaceReplay(next);
-      setRunning(false);
-      setNotice(`Replay reset to ${next.simulation.seed}.`);
-    },
-    [replaceReplay, seedDraft],
-  );
-
-  const toggleRun = useCallback(() => setRunning((value) => !value), []);
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else if (labRef.current) await labRef.current.requestFullscreen();
-    } catch {
-      setNotice("Fullscreen is unavailable in this browser.");
-    }
-  }, []);
+  useEffect(() => {
+    if (!playing) return;
+    const timeout = window.setTimeout(() => {
+      if (tick >= RUN_LENGTH) setPlaying(false);
+      else setTick(tick + 1);
+    }, tickMs);
+    return () => window.clearTimeout(timeout);
+  }, [playing, tick, tickMs]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    url.searchParams.set("seed", simulation.seed);
-    url.searchParams.set("scenario", simulation.scenarioId);
-    window.history.replaceState({}, "", url);
-  }, [simulation.seed, simulation.scenarioId]);
+    url.searchParams.set("seed", seed);
+    url.searchParams.set("scenario", scenarioId);
+    if (edited) {
+      url.searchParams.set("traffic", String(settings.traffic));
+      url.searchParams.set("caps", settings.capacities.join("-"));
+    } else {
+      url.searchParams.delete("traffic");
+      url.searchParams.delete("caps");
+    }
+    window.history.replaceState(null, "", url);
+  }, [seed, scenarioId, settings, edited]);
 
   useEffect(() => {
-    if (!running) return;
-    const interval = window.setInterval(() => advance(1), TICK_MS / speed);
-    return () => window.clearInterval(interval);
-  }, [advance, running, speed]);
+    if (copied === "idle") return;
+    const timeout = window.setTimeout(() => setCopied("idle"), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [copied]);
+
+  const togglePlay = () => {
+    if (playing) return setPlaying(false);
+    if (tick >= RUN_LENGTH) setTick(0);
+    setPlaying(true);
+  };
+  const seek = (next: number) => {
+    setPlaying(false);
+    setTick(Math.max(0, Math.min(RUN_LENGTH, next)));
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, select, textarea, [contenteditable]")) return;
+      if (event.code === "Space" && !target?.closest("button, a, summary")) {
+        event.preventDefault();
+        if (!event.repeat) document.getElementById("toggle-play")?.click();
+      } else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        document.getElementById(event.key === "ArrowRight" ? "step-forward" : "step-back")?.click();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     window.render_game_to_text = () =>
       JSON.stringify({
-        label: "SIMULATED local discrete-event systems model",
-        provenance: PROVENANCE,
-        limitations: [
-          "Capacities and compute units are arbitrary model units.",
-          "The model is not a benchmark, forecast, service-level claim, or production architecture.",
-          "No AI model, network, external service, identity data, or monetary data is involved.",
-        ],
-        coordinateSystem:
-          "Responsive DOM topology; stages ordered Intake, Classify, Policy, Dispatch.",
-        running,
-        playbackSpeed: speed,
-        ...getSnapshot(replayRef.current.simulation),
-        history: replayRef.current.history,
-        historyUnits: {
-          tick: "simulation ticks",
-          depth: "synthetic items after processing",
-          arrived: "synthetic items per tick",
-          completed: "synthetic items per tick",
-        },
+        label: "SIMULATED queue model. No real systems or telemetry.",
+        seed,
+        scenario: scenarioId,
+        settings,
+        playing,
+        tick,
+        frame,
       });
-    window.advanceTime = (ms: number) => {
-      const duration = Number(ms);
-      if (!Number.isFinite(duration)) return;
-      virtualRemainderRef.current += Math.max(0, duration);
-      const ticks = Math.floor(virtualRemainderRef.current / TICK_MS);
-      if (ticks > 0) {
-        virtualRemainderRef.current -= ticks * TICK_MS;
-        advance(ticks);
-      }
-    };
     return () => {
       delete window.render_game_to_text;
-      delete window.advanceTime;
     };
-  }, [advance, running, speed]);
+  }, [seed, scenarioId, settings, playing, tick, frame]);
 
-  useEffect(() => {
-    const onFullscreen = () =>
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey)
-        return;
-      if (event.key === "Escape" && document.fullscreenElement) {
-        event.preventDefault();
-        void toggleFullscreen();
-        return;
-      }
-      if (
-        target instanceof Element &&
-        target.closest("input, select, textarea, [contenteditable]")
-      )
-        return;
-      if (event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        void toggleFullscreen();
-      }
-      if (
-        event.code === "Space" &&
-        !(target instanceof Element && target.closest("button, a, summary"))
-      ) {
-        event.preventDefault();
-        toggleRun();
-      }
-    };
-    document.addEventListener("fullscreenchange", onFullscreen);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("fullscreenchange", onFullscreen);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [toggleFullscreen, toggleRun]);
-
-  useEffect(() => {
-    if (!selectedStage) return;
-    const heading = document.getElementById("inspector-title");
-    const inspector = document.getElementById("stage-inspector");
-    heading?.focus({ preventScroll: true });
-    inspector?.scrollIntoView({ block: "nearest", behavior: "instant" });
-  }, [selectedStage]);
-
-  const closeInspector = () => {
-    document.getElementById(`stage-${selectedStage}`)?.focus();
-    setSelectedStage("");
+  const loadScenario = (id: ScenarioId) => {
+    setScenarioId(id);
+    setSettings(normalizeSettings(id));
+    setTick(0);
+    setPlaying(true);
+    setNotice(`Loaded ${SCENARIOS[id].label}. Playing from tick 0.`);
   };
-
-  const snapshot = getSnapshot(simulation);
-  const scenarioNote = SCENARIO_PRESENTATION[simulation.scenarioId];
-  const latest = history[history.length - 1];
-  const selected = simulation.stages.find(
-    (stage) => stage.id === selectedStage,
-  );
-  const stageIndex = selected ? simulation.stages.indexOf(selected) : -1;
-  const stageWork = selected
-    ? simulation.queue
-        .filter((item) => item.stage === stageIndex)
-        .sort(
-          (a, b) =>
-            b.priority - a.priority ||
-            a.createdTick - b.createdTick ||
-            a.id.localeCompare(b.id),
-        )
-    : [];
-  const largestQueue = simulation.stages.reduce(
-    (largest, stage) => (stage.waiting > largest.waiting ? stage : largest),
-    simulation.stages[0],
-  );
-
-  useEffect(() => {
-    if (copyFeedback === "idle") return;
-    const timeout = window.setTimeout(() => setCopyFeedback("idle"), 3000);
-    return () => window.clearTimeout(timeout);
-  }, [copyFeedback]);
-
-  const copyReplay = async () => {
+  const applySeed = (next: string) => {
+    const normalized = normalizeSeed(next);
+    setSeed(normalized);
+    setSeedDraft(normalized);
+    setTick(0);
+    setPlaying(false);
+    setNotice(`Seed set to ${normalized}. The replay restarts at tick 0.`);
+  };
+  const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
-      setCopyFeedback("copied");
-      setNotice(
-        "Replay URL copied. The seed and scenario reproduce the same run from tick 0.",
-      );
+      setCopied("copied");
+      setNotice("Link copied. It reproduces this exact run from tick 0.");
     } catch {
-      setCopyFeedback("blocked");
-      setNotice(
-        "Clipboard access was blocked; copy the URL from the address bar.",
-      );
+      setCopied("blocked");
+      setNotice("Clipboard access was blocked. Copy the address bar instead; it holds the same link.");
     }
   };
 
-  const explanation =
-    simulation.tick === 0
-      ? "Ready to send the first items through."
-      : largestQueue.waiting
-        ? `Work is waiting at ${STEP_NAMES[largestQueue.id]}.`
-        : "Everything is getting through.";
-  const explanationDetail =
-    simulation.tick === 0
-      ? "Press Run. Each tick sends new work through the four steps."
-      : largestQueue.waiting
-        ? `${largestQueue.waiting} ${largestQueue.waiting === 1 ? "item is" : "items are"} waiting there. This step can process up to ${largestQueue.capacity} per tick.`
-        : `${simulation.completed} ${simulation.completed === 1 ? "item has" : "items have"} finished. Nothing is waiting at the end of this tick.`;
+  const totals = [
+    ["Arrived", frame.metrics.syntheticArrivals],
+    ["Finished", frame.metrics.syntheticCompleted],
+    ["Waiting now", frame.metrics.queueDepth],
+    ["Average ticks to finish", frame.metrics.syntheticCompleted ? frame.metrics.meanSojournTicks : "none yet"],
+    ["Retries at a slowed step", frame.metrics.retryDecisions],
+  ] as const;
 
   return (
-    <main ref={labRef} className="lab-shell">
-      <a className="skip-link" href="#controls">
-        Skip to simulator controls
+    <div className="page">
+      <a className="skip-link" href="#board">
+        Skip to the simulator
       </a>
-      <header className="app-header">
-        <a
-          className="brand"
-          href="#workspace"
-          aria-label="Queueglass workspace"
-        >
+      <header className="masthead">
+        <p className="brand">
           <BrandMark />
-          <span>
-            queueglass<span className="brand-period">.</span>
+          queueglass
+        </p>
+        <span className="truth-badge">Simulated data</span>
+        <button
+          id="copy-link"
+          type="button"
+          className="button ghost"
+          data-feedback={copied}
+          onClick={copyLink}
+        >
+          <Icon name="share" />
+          <span className="button-label">
+            {copied === "copied" ? "Link copied" : copied === "blocked" ? "Copy blocked" : "Share this run"}
           </span>
-        </a>
-        <div className="header-actions">
-          <span className="simulation-label">A small systems simulator</span>
-          <button
-            id="copy-replay"
-            className="button share-button"
-            data-feedback={copyFeedback}
-            title={
-              copyFeedback === "blocked"
-                ? "Clipboard blocked. Copy the URL from the address bar."
-                : "Copy a link to this seed and situation"
-            }
-            onClick={copyReplay}
-          >
-            <Icon name="share" />
-            {copyFeedback === "copied"
-              ? "Copied"
-              : copyFeedback === "blocked"
-                ? "Copy blocked"
-                : "Share replay"}
-          </button>
-        </div>
+        </button>
       </header>
-      <div className="workspace" id="workspace">
-        <section className="introduction">
-          <h1>See where work gets stuck.</h1>
-          <p>
-            Send work through four steps. Change the traffic. Watch the queue.
-          </p>
-        </section>
-        <section className="situation-picker" aria-label="Synthetic scenarios">
-          <span className="field-label">Try a situation</span>
-          <div className="scenario-list">
-            {Object.values(SCENARIOS).map((item) => (
+
+      <main>
+        <section className="intro" aria-labelledby="page-title">
+          <div className="intro-copy">
+            <h1 id="page-title">See where work gets stuck.</h1>
+            <p>
+              A seeded queue simulator. Pick a scenario, watch the bottleneck form and spread, then
+              scrub back through every tick.
+            </p>
+          </div>
+          <div className="scenarios" role="group" aria-label="Scenarios">
+            {Object.values(SCENARIOS).map((scenario) => (
               <button
-                key={item.id}
-                id={`scenario-${item.id}`}
-                className={`scenario-card ${simulation.scenarioId === item.id ? "selected" : ""}`}
-                aria-pressed={simulation.scenarioId === item.id}
-                onClick={() => {
-                  reset(simulation.seed, item.id as ScenarioId);
-                  setSelectedStage("");
-                }}
+                key={scenario.id}
+                id={`scenario-${scenario.id}`}
+                type="button"
+                className="scenario"
+                aria-pressed={scenarioId === scenario.id}
+                onClick={() => loadScenario(scenario.id as ScenarioId)}
               >
-                {SCENARIO_PRESENTATION[item.id as ScenarioId].label}
+                <span className="scenario-name">{scenario.label}</span>
+                <span className="scenario-summary">{scenario.summary}</span>
               </button>
             ))}
           </div>
-          <p className="situation-description">{scenarioNote.description}</p>
+          <p className="scenario-note">{preset.summary}</p>
         </section>
 
-        <section
-          className="topology-panel"
-          aria-label="Work moves through four steps"
-        >
-          <div
-            id="controls"
-            className="control-panel flow-heading"
-            role="group"
-            aria-label="Simulator controls"
-          >
-            <div className="transport">
+        <section id="board" className="panel board-panel" aria-labelledby="board-title">
+          <div className="board-bar">
+            <div className="message">
+              <h2 id="board-title">{message.title}</h2>
+              <p>{message.detail}</p>
+            </div>
+            <div className="transport" role="group" aria-label="Playback">
               <button
-                id="toggle-run"
+                id="toggle-play"
+                type="button"
                 className="button primary"
-                aria-pressed={running}
-                onClick={toggleRun}
+                aria-pressed={playing}
+                onClick={togglePlay}
               >
-                <Icon name={running ? "pause" : "play"} />
-                {running ? "Pause" : simulation.tick ? "Continue" : "Run"}
+                <Icon name={playing ? "pause" : "play"} />
+                {playing ? "Pause" : tick >= RUN_LENGTH ? "Replay" : "Play"}
               </button>
               <button
-                id="advance-1"
-                className="button step-button"
-                onClick={() => advance(1)}
-              >
-                <Icon name="step" />1 tick
-              </button>
-              <button
-                id="reset-replay"
+                id="step-back"
+                type="button"
                 className="icon-button"
-                aria-label="Reset replay"
-                title="Start again"
-                onClick={() => reset(simulation.seed, simulation.scenarioId)}
+                aria-label="Back one tick"
+                disabled={tick === 0}
+                onClick={() => seek(tick - 1)}
+              >
+                <Icon name="back" />
+              </button>
+              <button
+                id="step-forward"
+                type="button"
+                className="icon-button"
+                aria-label="Forward one tick"
+                disabled={tick === RUN_LENGTH}
+                onClick={() => seek(tick + 1)}
+              >
+                <Icon name="next" />
+              </button>
+              <button
+                id="restart"
+                type="button"
+                className="icon-button"
+                aria-label="Back to tick 0"
+                onClick={() => seek(0)}
               >
                 <Icon name="reset" />
               </button>
+              <div className="speed" role="group" aria-label="Playback speed">
+                {SPEEDS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={speed === value}
+                    onClick={() => setSpeed(value)}
+                  >
+                    {value}×
+                  </button>
+                ))}
+              </div>
+              <span className="tick-readout">
+                <FlapText value={`T${String(tick).padStart(2, "0")}`} size="md" />
+                <span>of {RUN_LENGTH}</span>
+              </span>
             </div>
-            <span className="flow-hint">Click a step to look inside</span>
-            <button
-              id="toggle-fullscreen"
-              className="icon-button"
-              aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-              title="Fullscreen (F)"
-              aria-pressed={isFullscreen}
-              onClick={toggleFullscreen}
-            >
-              <Icon name="expand" />
-            </button>
           </div>
-          <div className="run-explanation" aria-label="What is happening">
-            <h2>{explanation}</h2>
-            {simulation.tick === 0 ? (
-              <p>{explanationDetail}</p>
-            ) : (
-              <p className="tick-balance" aria-label="This tick">
-                <span className="tick-label">This tick</span>
-                <span id="tick-arrived">
-                  <b>{latest.arrived}</b> arrived
-                </span>
-                <span id="tick-finished">
-                  <b>{latest.completed}</b> finished
-                </span>
-                <span
-                  id="tick-queue-change"
-                  className={latest.arrived > latest.completed ? "growing" : ""}
-                >
-                  {latest.arrived === latest.completed ? (
-                    "Queue unchanged"
-                  ) : (
-                    <>
-                      <b>{Math.abs(latest.arrived - latest.completed)}</b>
-                      {latest.arrived > latest.completed
-                        ? " more waiting"
-                        : " fewer waiting"}
-                    </>
-                  )}
-                </span>
-              </p>
-            )}
-          </div>
-          <Topology
-            stages={simulation.stages}
-            selectedStage={selectedStage}
-            onSelectStage={(id) =>
-              setSelectedStage((current) => (current === id ? "" : id))
+
+          <FlowBoard
+            frame={frame}
+            traffic={settings.traffic}
+            capacities={settings.capacities}
+            animate={playing && !reducedMotion}
+            tickMs={tickMs}
+            onTraffic={(traffic) => setSettings({ ...settings, traffic })}
+            onCapacity={(index, value) =>
+              setSettings({
+                ...settings,
+                capacities: settings.capacities.map((capacity, at) => (at === index ? value : capacity)),
+              })
             }
-            running={running}
           />
-          {selected && (
-            <section
-              id="stage-inspector"
-              className="stage-inspector"
-              data-stage={selectedStage}
-              aria-labelledby="inspector-title"
-            >
-              <div className="section-heading">
-                <h2 id="inspector-title" tabIndex={-1}>
-                  Inside {STEP_NAMES[selectedStage]}
-                </h2>
-                <button
-                  id="close-inspector"
-                  className="icon-button close-button"
-                  aria-label="Close stage inspector"
-                  onClick={closeInspector}
-                >
-                  ×
-                </button>
-              </div>
-              <p className="inspector-description">
-                {STAGE_NOTES[selectedStage]}
-              </p>
-              <dl className="inspector-metrics">
-                <div>
-                  <dt>Can process per tick</dt>
-                  <dd>{selected.capacity}</dd>
-                </div>
-                <div>
-                  <dt>Moved this tick</dt>
-                  <dd>{selected.handled}</dd>
-                </div>
-                <div>
-                  <dt>Still waiting</dt>
-                  <dd>{selected.waiting}</dd>
-                </div>
-              </dl>
-              <div className="work-list">
-                <div className="work-list-heading">
-                  <span>WAITING ITEMS</span>
-                  <span>PRIORITY / RETRIES</span>
-                </div>
-                {stageWork.length ? (
-                  <ul>
-                    {stageWork.slice(0, 5).map((item) => (
-                      <li key={item.id}>
-                        <span>{item.id}</span>
-                        <span>
-                          <b>P{item.priority}</b>
-                          <span className={item.retries ? "has-retries" : ""}>
-                            {item.retries}
-                          </span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="empty-work">
-                    {simulation.tick
-                      ? "No work is waiting at this step."
-                      : "Run the simulation to send work through this step."}
-                  </p>
-                )}
-                {stageWork.length > 5 && (
-                  <p className="work-overflow">
-                    First 5 of {stageWork.length}, in processing order. Higher
-                    priority goes first.
-                  </p>
-                )}
-              </div>
-            </section>
-          )}
-          <div className="flow-summary">
-            <div>
-              <span
-                className={
-                  simulation.queue.length
-                    ? "queue-count pressure"
-                    : "queue-count"
-                }
+          {edited && (
+            <p className="edited-note">
+              You changed the {preset.label} settings, so this is a new run.{" "}
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setSettings(normalizeSettings(scenarioId))}
               >
-                <b>{simulation.queue.length}</b> waiting
-              </span>
-              <span>
-                <b>{simulation.completed}</b> finished total
-              </span>
+                Back to the preset
+              </button>
+            </p>
+          )}
+
+          <div className="replay">
+            <div className="replay-head">
+              <h2>Replay</h2>
+              <p>
+                {runInsight(frames)} Drag across the lanes or use the slider to scrub to any tick.
+              </p>
             </div>
-            <span className="tick-readout">
-              tick <b>{String(simulation.tick).padStart(3, "0")}</b>
-              <i className={running ? "running" : ""} />
-            </span>
+            <Timeline frames={frames} tick={tick} scenarioId={scenarioId} onSeek={seek} />
           </div>
         </section>
 
-        <div className="details-area">
-          <details id="numbers-panel" className="disclosure">
-            <summary>
-              <span>Explore the run</span>
-              <span className="summary-description">
-                Chart, counts & decisions
-              </span>
-              <span className="detail-plus">+</span>
-            </summary>
-            <div className="disclosure-content">
-              <div className="advanced-controls">
-                <button
-                  id="advance-10"
-                  className="button"
-                  onClick={() => advance(10)}
-                >
-                  Advance 10 ticks
-                </button>
-                <label>
-                  Playback speed{" "}
-                  <select
-                    aria-label="Playback speed"
-                    value={speed}
-                    onChange={(event) => setSpeed(Number(event.target.value))}
-                  >
-                    <option value={0.5}>0.5×</option>
-                    <option value={1}>1×</option>
-                    <option value={2}>2×</option>
-                  </select>
-                </label>
+        <section className="totals" aria-label={`Simulated totals at tick ${tick}`}>
+          <h2>
+            Totals at tick {tick}
+            <span>simulated items</span>
+          </h2>
+          <dl>
+            {totals.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
               </div>
-              <section
-                className="pressure-panel"
-                aria-labelledby="pressure-title"
+            ))}
+          </dl>
+        </section>
+
+        <div className="notes">
+          <section className="panel" aria-labelledby="model-title">
+            <h2 id="model-title">How the model works</h2>
+            <p>
+              Each tick, new items arrive at Receive. Steps are served from Finish back to Receive,
+              so an item moves at most one step per tick and space freed downstream is visible
+              upstream on the same tick. A step serves higher-priority items first, up to its
+              capacity.
+            </p>
+            <p>
+              The bottleneck is the step that left the most work unserved on a tick. A step that
+              cannot pass work on because the buffer after it is full is marked blocked, not
+              bottleneck: it is waiting on the step after it.
+            </p>
+            <p className="truth">
+              Everything here is generated in your browser by a small deterministic model. There
+              is no real system, telemetry or benchmark behind it. Capacity is in items per tick
+              and time is in ticks.
+            </p>
+          </section>
+          <section className="panel" aria-labelledby="seed-title">
+            <h2 id="seed-title">Same seed, same run</h2>
+            <p>
+              The seed fixes every random draw, so a seed plus a scenario and its settings always
+              produces the same {RUN_LENGTH} ticks. The share link carries all three.
+            </p>
+            <form
+              className="seed-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                applySeed(seedDraft);
+              }}
+            >
+              <label htmlFor="seed-input">Seed</label>
+              <input
+                id="seed-input"
+                value={seedDraft}
+                onChange={(event) => setSeedDraft(event.target.value)}
+                maxLength={32}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <button type="submit" className="button ghost">
+                Apply
+              </button>
+              <button
+                type="button"
+                className="button ghost"
+                onClick={() => applySeed(`LAB-${hashSeed(`${seed}:${tick}`).toString(36).toUpperCase()}`)}
               >
-                <div className="section-heading">
-                  <h2 id="pressure-title">Waiting over time</h2>
-                  <span className="chart-key">
-                    <i />
-                    Items in the queue
-                  </span>
-                </div>
-                <PressureChart
-                  history={history}
-                  scenario={simulation.scenarioId}
-                />
-                <div className="chart-stats">
-                  <span>
-                    <b>+{latest.arrived}</b> arrived this tick
-                  </span>
-                  <span>
-                    <b>−{latest.completed}</b> finished this tick
-                  </span>
-                  <span className="chart-tick">
-                    T{String(simulation.tick).padStart(3, "0")}
-                  </span>
-                </div>
-                <p className="chart-footnote">
-                  {history.length === 80
-                    ? "Last 80 ticks"
-                    : "Every tick recorded"}{" "}
-                  · queue depth after processing
-                </p>
-              </section>
-              <section className="metric-strip" aria-label="Synthetic metrics">
-                {[
-                  [
-                    "Total arrivals",
-                    snapshot.metrics.syntheticArrivals,
-                    "generated items",
-                  ],
-                  [
-                    "Mean time to finish",
-                    simulation.completed
-                      ? snapshot.metrics.meanSojournTicks
-                      : "—",
-                    "simulation ticks · completed items",
-                  ],
-                  [
-                    "Retries",
-                    snapshot.metrics.retryDecisions,
-                    "synthetic decisions",
-                  ],
-                  [
-                    "Compute",
-                    snapshot.metrics.computeUnits,
-                    "arbitrary model units",
-                  ],
-                ].map(([label, value, unit]) => (
-                  <article className="metric" key={label}>
-                    <h3>{label}</h3>
-                    <strong>{value}</strong>
-                    <span>{unit}</span>
-                  </article>
-                ))}
-              </section>
-              <section className="event-panel" aria-labelledby="events-title">
-                <div className="section-heading">
-                  <h2 id="events-title">Recent decisions</h2>
-                  <span className="field-label">NEWEST FIRST</span>
-                </div>
-                <ol className="event-list">
-                  {snapshot.events.map((event, index) => (
-                    <li key={`${event.tick}-${event.kind}-${index}`}>
-                      <span className="event-tick">
-                        T{String(event.tick).padStart(3, "0")}
-                      </span>
-                      <span className={`event-kind ${event.kind}`}>
-                        {event.kind}
-                      </span>
-                      <p>{event.message}</p>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            </div>
-          </details>
-          <details id="replay-settings" className="disclosure">
-            <summary>
-              <span>Replay settings</span>
-              <span className="summary-description">
-                Repeat the same experiment
-              </span>
-              <span className="detail-plus">+</span>
-            </summary>
-            <div className="disclosure-content replay-content">
-              <div>
-                <p>
-                  The same seed and situation produce the same decisions. Shared
-                  links start at tick 0.
-                </p>
-                <form
-                  className="seed-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    reset();
-                  }}
-                >
-                  <label className="seed-control">
-                    <span>Replay seed</span>
-                    <input
-                      value={seedDraft}
-                      onChange={(event) => setSeedDraft(event.target.value)}
-                      maxLength={32}
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <button id="apply-seed" className="button" type="submit">
-                    Apply seed
-                  </button>
-                </form>
-                <button
-                  id="derive-seed"
-                  className="text-button"
-                  onClick={() =>
-                    reset(
-                      `LAB-${hashSeed(`${simulation.seed}:${simulation.tick}`).toString(36).toUpperCase()}`,
-                      simulation.scenarioId,
-                    )
-                  }
-                >
-                  <Icon name="shuffle" />
-                  Try another seed
-                </button>
-              </div>
-              <div className="keyboard-hints">
-                <span>
-                  <kbd>space</kbd> Run or pause
-                </span>
-                <span>
-                  <kbd>F</kbd> Fullscreen
-                </span>
-              </div>
-            </div>
-          </details>
-          <details className="disclosure truth-panel">
-            <summary>
-              <span>How this model works</span>
-              <span className="truth-badge">SIMULATED DATA</span>
-              <span className="detail-plus">+</span>
-            </summary>
-            <div className="disclosure-content">
-              <h3>This is a model, not a monitored system.</h3>
-              <p>
-                One tick is one round of processing. Items enter at Receive and
-                can pass through all four steps in the same tick. When a step
-                cannot keep up, work waits there for a later tick.
-              </p>
-              <p>{PROVENANCE}</p>
-              <p>
-                Capacity and compute use arbitrary units. Time is measured in
-                simulation ticks. Results are educational, not forecasts or
-                performance claims.
-              </p>
-            </div>
-          </details>
+                <Icon name="shuffle" />
+                Another seed
+              </button>
+            </form>
+            <p className="keys">
+              <kbd>Space</kbd> plays or pauses. <kbd>←</kbd> <kbd>→</kbd> step one tick.
+            </p>
+          </section>
         </div>
-        <footer className="workspace-footer">
-          <p className="status-line" role="status" aria-live="polite">
-            {notice}
-          </p>
-          <span>Local. Seeded. Repeatable.</span>
-        </footer>
-      </div>
-    </main>
+      </main>
+
+      <footer className="footer">
+        <p role="status" aria-live="polite">
+          {notice}
+        </p>
+        <p>
+          queueglass is open source.{" "}
+          <a href="https://github.com/fortunexbt/queueglass">Read the code on GitHub</a>.
+        </p>
+      </footer>
+    </div>
   );
 }
