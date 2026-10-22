@@ -494,6 +494,7 @@ a:hover {
 }
 code {
   padding: 1px 5px;
+  white-space: nowrap;
   border-radius: 4px;
   background: var(--panel-raised);
   font: 400 0.9em ui-monospace, "SF Mono", Menlo, monospace;
@@ -704,6 +705,11 @@ kbd {
   }
   .step-unit {
     display: none;
+  }
+  /* 16px stops iOS Safari zooming the page when a field takes focus. */
+  .line-panel input,
+  .line-panel textarea {
+    font-size: 16px;
   }
   .speed {
     margin-left: 0;
