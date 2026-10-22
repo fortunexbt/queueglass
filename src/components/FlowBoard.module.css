@@ -11,13 +11,6 @@
   }
 }
 
-.boardHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px 24px;
-}
 .boardKey {
   display: flex;
   flex-wrap: wrap;
@@ -26,16 +19,18 @@
   color: var(--muted);
   font-size: 13px;
 }
-.keyTile,
-.keySlot {
+.keyTile {
   width: 10px;
   height: 10px;
   border-radius: 2px;
   background: var(--queue);
 }
-.keySlot {
+.keyMeter {
+  width: 22px;
+  height: 6px;
   margin-left: 10px;
-  background: var(--ink-2);
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--ink-2) 60%, var(--hair-strong) 60%);
 }
 
 .flow {
@@ -49,6 +44,20 @@
   display: flex;
   flex: 1 1 0;
   min-width: 0;
+}
+/* Five to eight steps: tighter rails and cards, and the row scrolls rather than crushing them. */
+.board[data-many] {
+  --rail: 28px;
+}
+.board[data-many] .flow {
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.board[data-many] .slot {
+  min-width: 172px;
+}
+.board[data-many] .stageHead h3 {
+  font-size: 18px;
 }
 
 /* Rails between steps */
@@ -175,8 +184,7 @@
     0 0 0 1px var(--amber),
     0 12px 32px -12px color-mix(in oklab, var(--amber) 45%, transparent);
 }
-.stage[data-status="blocked"],
-.stage[data-status="slowed"] {
+.stage[data-status="blocked"] {
   border-color: color-mix(in oklab, var(--red) 60%, var(--hair));
 }
 .stageHead {
@@ -195,6 +203,29 @@
   line-height: 1;
 }
 
+.status {
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--hair);
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.status[data-tone="amber"] {
+  background: var(--amber);
+  color: var(--amber-ink);
+}
+.status[data-tone="red"] {
+  color: var(--red);
+}
+.status[data-tone="green"] {
+  color: var(--green);
+}
+
 .queue {
   display: grid;
   align-content: start;
@@ -205,6 +236,14 @@
   align-items: baseline;
   gap: 8px;
   color: var(--muted);
+}
+.count b {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 .pile {
   display: grid;
@@ -244,26 +283,23 @@
   justify-content: space-between;
   gap: 6px 12px;
 }
-.cells {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.meter {
+  position: relative;
+  flex: 1 1 80px;
+  max-width: 160px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hair-strong);
+  overflow: hidden;
 }
-.cells i {
-  width: 18px;
-  height: 8px;
-  border-radius: 2px;
-  border: 1px solid var(--hair-strong);
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease;
-}
-.cells i[data-state="moved"] {
+.meter i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
   background: var(--ink-2);
-  border-color: var(--ink-2);
+  transition: width 160ms ease;
 }
-.cells i[data-state="lost"] {
-  border-color: color-mix(in oklab, var(--red) 70%, transparent);
+.meter[data-blocked] {
   background: repeating-linear-gradient(
     135deg,
     color-mix(in oklab, var(--red) 55%, transparent) 0 2px,
@@ -273,57 +309,6 @@
 .capacityText {
   color: var(--ink-2);
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Stepper */
-.stepper {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  justify-self: start;
-}
-.stepperCaption {
-  margin-right: 4px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.stepper button {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--hair-strong);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink);
-  transition:
-    background-color 150ms ease,
-    transform 120ms var(--ease-out);
-}
-.stepper button svg {
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
-.stepper button:active:not(:disabled) {
-  transform: scale(0.94);
-}
-.stepper button:disabled {
-  color: var(--hair-strong);
-  cursor: not-allowed;
-}
-@media (hover: hover) and (pointer: fine) {
-  .stepper button:hover:not(:disabled) {
-    background: var(--hair);
-  }
-}
-.stepper output {
-  min-width: 2ch;
-  text-align: center;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -339,8 +324,10 @@
   .board {
     --rail: 40px;
   }
-  .flow {
+  .flow,
+  .board[data-many] .flow {
     flex-direction: column;
+    overflow-x: visible;
     padding: 0 0 var(--rail);
   }
   .slot {
@@ -411,14 +398,9 @@
     justify-content: flex-start;
     text-align: right;
   }
-  .cells {
-    justify-content: flex-end;
-    max-width: 120px;
-  }
-  .stage .stepper {
-    grid-column: 2;
-    grid-row: 3;
-    justify-self: end;
+  .meter {
+    width: 120px;
+    flex: none;
   }
   .stageHead h3 {
     font-size: 22px;

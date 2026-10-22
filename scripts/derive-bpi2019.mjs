@@ -15,6 +15,8 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { EXAMPLE_FILE } from "../src/lib/line.js";
+
 const SOURCE_MD5 = "4eb909242351193a61e1c15b9c3cc814";
 const SPEND_AREA = "CAPEX & SOCS";
 const YEAR = "2018";
@@ -24,7 +26,7 @@ const COLUMNS = [
   ["invoices_received", "Record Invoice Receipt"],
   ["invoices_cleared", "Clear Invoice"],
 ];
-const OUTPUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "bpi2019-capex-socs-daily.2026-10-23.csv");
+const OUTPUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", EXAMPLE_FILE);
 
 const unescape = (value) =>
   value.replace(/&(amp|lt|gt|quot|apos);/g, (_, name) => ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" })[name]);

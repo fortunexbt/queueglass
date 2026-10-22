@@ -2,25 +2,18 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import FlapText from "@/components/FlapText";
-import FlowBoard, { type Frame } from "@/components/FlowBoard";
+import FlowBoard from "@/components/FlowBoard";
+import LinePanel from "@/components/LinePanel";
 import Timeline from "@/components/Timeline";
-import {
-  RUN_LENGTH,
-  SCENARIOS,
-  STAGES,
-  hashSeed,
-  normalizeSeed,
-  normalizeSettings,
-  runSimulation,
-} from "@/lib/simulation.js";
+import { type Setup, decodeSetup, encodeSetup, headline, periodDate, periodLabel } from "@/lib/line.js";
+import { type Frame, analyzeLine } from "@/lib/simulation.js";
 
-type ScenarioId = keyof typeof SCENARIOS;
-type Settings = ReturnType<typeof normalizeSettings>;
-type IconName = "play" | "pause" | "next" | "back" | "reset" | "share" | "shuffle";
+type IconName = "play" | "pause" | "next" | "back" | "reset" | "share";
 
-const BASE_TICK_MS = 600;
+// A whole replay plays in about 24 seconds at 1x, however many periods it has.
+const RUN_MS = 24_000;
 const SPEEDS = [0.5, 1, 2];
+const MOVING_DOTS_MIN_MS = 200;
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -30,9 +23,6 @@ function Icon({ name }: { name: IconName }) {
     back: <path d="m18 5-9 7 9 7ZM6 5v14" />,
     reset: <path d="M4 10a8 8 0 1 1 1 7M4 4v6h6" />,
     share: <path d="M12 15V3m-4 4 4-4 4 4M5 12v8h14v-8" />,
-    shuffle: (
-      <path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 3-2 4-4m4-4c1-2 2-4 4-4h3m-4-4 4 4-4 4" />
-    ),
   };
   return (
     <svg
@@ -62,57 +52,55 @@ function BrandMark() {
   );
 }
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
-const listLabels = (labels: string[]) =>
-  labels.length < 2 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+const plural = (count: number, word: string) => `${count.toLocaleString("en-GB")} ${word}${count === 1 ? "" : "s"}`;
 
-function describe(frame: Frame) {
-  if (frame.tick === 0) {
-    return {
-      title: "Ready at tick 0",
-      detail: "Press play to send simulated work through the four steps.",
-    };
+function describe(frame: Frame, when: string) {
+  if (frame.period === 0) {
+    return { title: "Start", detail: "Nothing has arrived yet. Press play or drag the replay." };
   }
-  const blocked = frame.stages.filter((stage) => stage.blocked).map((stage) => stage.label);
-  const behind = blocked.length
-    ? ` ${listLabels(blocked)} ${blocked.length === 1 ? "is" : "are"} blocked behind it.`
-    : "";
-  const bottleneck = frame.stages.find((stage) => stage.id === frame.bottleneck);
+  const blocked = frame.stages.filter((stage) => stage.blocked).map((stage) => stage.name);
+  const behind = blocked.length ? ` Held by the WIP limit: ${blocked.join(", ")}.` : "";
+  const bottleneck = frame.stages[frame.bottleneck];
   if (bottleneck) {
     return {
-      title: `${bottleneck.label} is the bottleneck`,
-      detail: `${plural(bottleneck.leftover, "item")} could not move on from ${bottleneck.label} this tick. It moves at most ${bottleneck.capacity} per tick${bottleneck.faulted ? " while it is slowed" : ""}.${behind}`,
+      title: `${when}: ${bottleneck.name} is the bottleneck`,
+      detail: `${plural(bottleneck.leftover, "item")} could not move on from ${bottleneck.name}, which finishes at most ${bottleneck.capacity}.${behind}`,
     };
   }
   if (blocked.length) {
-    return {
-      title: `${listLabels(blocked)} ${blocked.length === 1 ? "is" : "are"} blocked`,
-      detail: "The buffer after it is full, so work holds where it is.",
-    };
+    return { title: `${when}: blocked by the WIP limit`, detail: `${blocked.join(", ")} cannot pass work on until the next step drains.` };
   }
   return {
-    title: "Everything is getting through",
-    detail: `${plural(frame.arrived, "item")} arrived and ${frame.finished} finished on this tick.`,
+    title: `${when}: everything moved`,
+    detail: `${plural(frame.arrived, "item")} arrived and ${frame.finished} finished.`,
   };
 }
 
-function runInsight(frames: Frame[]) {
-  const counts = STAGES.map((stage) => ({
-    label: stage.label,
-    ticks: frames.filter((frame) => frame.bottleneck === stage.id).length,
-  }))
-    .filter((entry) => entry.ticks > 0)
-    .sort((left, right) => right.ticks - left.ticks);
-  if (!counts.length) {
-    return "No step was a bottleneck in this run. Raise the arrivals or lower a capacity to make one.";
-  }
-  const [first, ...rest] = counts;
-  const others = rest.map((entry) => `${entry.label} on ${entry.ticks}`);
-  return `Over all ${RUN_LENGTH} ticks, ${first.label} was the bottleneck on ${first.ticks}${others.length ? `, ${listLabels(others)}` : ""}.`;
+// The share-link fragment is the single source of truth for the line. It never reaches a
+// server. `version` counts loads from outside the panel (a pasted link, the example button),
+// which is when the panel's drafts have to be thrown away.
+const listeners = new Set<() => void>();
+let version = 0;
+function subscribeFragment(onChange: () => void) {
+  const onHashChange = () => {
+    version += 1;
+    onChange();
+  };
+  listeners.add(onChange);
+  window.addEventListener("hashchange", onHashChange);
+  return () => {
+    listeners.delete(onChange);
+    window.removeEventListener("hashchange", onHashChange);
+  };
 }
-
-const sameSettings = (left: Settings, right: Settings) =>
-  left.traffic === right.traffic && left.capacities.every((value, index) => value === right.capacities[index]);
+const fragmentNow = () => `${version}#${window.location.hash.slice(1)}`;
+function writeFragment(fragment: string, external: boolean) {
+  const url = new URL(window.location.href);
+  url.hash = fragment;
+  window.history.replaceState(null, "", fragment ? url : url.href.replace(/#.*$/, ""));
+  if (external) version += 1;
+  for (const listener of listeners) listener();
+}
 
 function subscribeReducedMotion(onChange: () => void) {
   const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -127,62 +115,42 @@ declare global {
   }
 }
 
-export default function SimulatorLab({
-  initialSeed,
-  initialScenario,
-  initialSettings,
-}: {
-  initialSeed: string;
-  initialScenario: ScenarioId;
-  initialSettings: Settings;
-}) {
-  const [seed, setSeed] = useState(initialSeed);
-  const [seedDraft, setSeedDraft] = useState(initialSeed);
-  const [scenarioId, setScenarioId] = useState(initialScenario);
-  const [settings, setSettings] = useState(initialSettings);
-  const [tick, setTick] = useState(0);
+export default function SimulatorLab({ example }: { example: Setup }) {
+  const snapshot = useSyncExternalStore(subscribeFragment, fragmentNow, () => "server#");
+  const panelKey = snapshot.slice(0, snapshot.indexOf("#"));
+  const fragment = snapshot.slice(snapshot.indexOf("#") + 1);
+  const exampleFragment = useMemo(() => encodeSetup(example), [example]);
+  const setup = useMemo(() => (fragment && decodeSetup(fragment)) || example, [fragment, example]);
+  const key = encodeSetup(setup);
+  const isExample = key === exampleFragment;
+  const analysis = useMemo(() => analyzeLine(setup.line), [setup]);
+  const verdict = headline(setup, analysis);
+  const { frames, peak, clearedBy, limiting, whatIf } = analysis;
+  const last = frames.length - 1;
+
+  // The replay opens on the worst period. A new line moves it to that line's worst period.
+  const [cursor, setCursor] = useState({ key: "", tick: 0 });
+  const tick = cursor.key === key ? Math.min(cursor.tick, last) : peak.period;
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState<"idle" | "copied" | "blocked">("idle");
   const reducedMotion = useSyncExternalStore(subscribeReducedMotion, reducedMotionNow, () => true);
 
-  const frames = useMemo(() => runSimulation(seed, scenarioId, settings), [seed, scenarioId, settings]);
   const frame = frames[tick];
-  const tickMs = BASE_TICK_MS / speed;
-  const preset = SCENARIOS[scenarioId];
-  const edited = !sameSettings(settings, normalizeSettings(scenarioId));
-  const message = describe(frame);
-
-  // Start the default replay on load so the first screen is already moving.
-  useEffect(() => {
-    if (reducedMotionNow()) return;
-    const timeout = window.setTimeout(() => setPlaying(true));
-    return () => window.clearTimeout(timeout);
-  }, []);
+  const tickMs = Math.min(600, Math.max(40, RUN_MS / last)) / speed;
+  const label = (period: number) => periodLabel(setup, period);
+  const unitPlural = `${setup.unit}s`;
+  const message = describe(frame, label(tick));
 
   useEffect(() => {
     if (!playing) return;
     const timeout = window.setTimeout(() => {
-      if (tick >= RUN_LENGTH) setPlaying(false);
-      else setTick(tick + 1);
+      if (tick >= last) setPlaying(false);
+      else setCursor({ key, tick: tick + 1 });
     }, tickMs);
     return () => window.clearTimeout(timeout);
-  }, [playing, tick, tickMs]);
-
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("seed", seed);
-    url.searchParams.set("scenario", scenarioId);
-    if (edited) {
-      url.searchParams.set("traffic", String(settings.traffic));
-      url.searchParams.set("caps", settings.capacities.join("-"));
-    } else {
-      url.searchParams.delete("traffic");
-      url.searchParams.delete("caps");
-    }
-    window.history.replaceState(null, "", url);
-  }, [seed, scenarioId, settings, edited]);
+  }, [playing, tick, tickMs, last, key]);
 
   useEffect(() => {
     if (copied === "idle") return;
@@ -190,14 +158,14 @@ export default function SimulatorLab({
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
-  const togglePlay = () => {
-    if (playing) return setPlaying(false);
-    if (tick >= RUN_LENGTH) setTick(0);
-    setPlaying(true);
-  };
   const seek = (next: number) => {
     setPlaying(false);
-    setTick(Math.max(0, Math.min(RUN_LENGTH, next)));
+    setCursor({ key, tick: Math.max(0, Math.min(last, next)) });
+  };
+  const togglePlay = () => {
+    if (playing) return setPlaying(false);
+    setCursor({ key, tick: tick >= last ? 0 : tick });
+    setPlaying(true);
   };
 
   useEffect(() => {
@@ -219,75 +187,61 @@ export default function SimulatorLab({
 
   useEffect(() => {
     window.render_game_to_text = () =>
-      JSON.stringify({
-        label: "SIMULATED queue model. No real systems or telemetry.",
-        seed,
-        scenario: scenarioId,
-        settings,
-        playing,
-        tick,
-        frame,
-      });
+      JSON.stringify({ setup, isExample, verdict, peak, clearedBy, limiting, whatIf, playing, tick, last, frame });
     return () => {
       delete window.render_game_to_text;
     };
-  }, [seed, scenarioId, settings, playing, tick, frame]);
+  }, [setup, isExample, verdict, peak, clearedBy, limiting, whatIf, playing, tick, last, frame]);
 
-  const loadScenario = (id: ScenarioId) => {
-    setScenarioId(id);
-    setSettings(normalizeSettings(id));
-    setTick(0);
-    setPlaying(true);
-    setNotice(`Loaded ${SCENARIOS[id].label}. Playing from tick 0.`);
+  const changeSetup = (next: Setup) => {
+    const encoded = encodeSetup(next);
+    writeFragment(encoded === exampleFragment ? "" : encoded, false);
   };
-  const applySeed = (next: string) => {
-    const normalized = normalizeSeed(next);
-    setSeed(normalized);
-    setSeedDraft(normalized);
-    setTick(0);
-    setPlaying(false);
-    setNotice(`Seed set to ${normalized}. The replay restarts at tick 0.`);
+  const loadExample = () => {
+    writeFragment("", true);
+    setNotice("Loaded the BPI Challenge 2019 example.");
   };
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
       setCopied("copied");
-      setNotice("Link copied. It reproduces this exact run from tick 0.");
+      setNotice("Link copied. The line and its arrivals are in the part after #, which browsers never send to a server.");
     } catch {
       setCopied("blocked");
       setNotice("Clipboard access was blocked. Copy the address bar instead; it holds the same link.");
     }
   };
 
+  const window_ = clearedBy === null ? null : { from: peak.period, to: clearedBy, label: "Peak to cleared" };
+  const axisLabel = (period: number) => {
+    const date = period === 0 ? null : periodDate(setup, period);
+    return date
+      ? new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
+      : String(period);
+  };
   const totals = [
-    ["Arrived", frame.metrics.syntheticArrivals],
-    ["Finished", frame.metrics.syntheticCompleted],
-    ["Waiting now", frame.metrics.queueDepth],
-    ["Average ticks to finish", frame.metrics.syntheticCompleted ? frame.metrics.meanSojournTicks : "none yet"],
-    ["Retries at a slowed step", frame.metrics.retryDecisions],
+    ["Arrived so far", frames.slice(1, tick + 1).reduce((sum, item) => sum + item.arrived, 0)],
+    ["Finished so far", frame.totalFinished],
+    ["In the line now", frame.inLine],
+    ["Held back this " + setup.unit, frame.backlog],
+    [`Average ${unitPlural} to finish`, frame.totalFinished ? frame.meanPeriodsToFinish : "none yet"],
   ] as const;
 
   return (
     <div className="page">
-      <a className="skip-link" href="#board">
-        Skip to the simulator
+      <a className="skip-link" href="#your-line">
+        Skip to your line
       </a>
       <header className="masthead">
         <p className="brand">
           <BrandMark />
           queueglass
         </p>
-        <span className="truth-badge">Simulated data</span>
-        <button
-          id="copy-link"
-          type="button"
-          className="button ghost"
-          data-feedback={copied}
-          onClick={copyLink}
-        >
+        <span className="truth-badge">Runs in your browser</span>
+        <button id="copy-link" type="button" className="button ghost" data-feedback={copied} onClick={copyLink}>
           <Icon name="share" />
           <span className="button-label">
-            {copied === "copied" ? "Link copied" : copied === "blocked" ? "Copy blocked" : "Share this run"}
+            {copied === "copied" ? "Link copied" : copied === "blocked" ? "Copy blocked" : "Share this line"}
           </span>
         </button>
       </header>
@@ -295,29 +249,93 @@ export default function SimulatorLab({
       <main>
         <section className="intro" aria-labelledby="page-title">
           <div className="intro-copy">
-            <h1 id="page-title">See where work gets stuck.</h1>
+            <h1 id="page-title">Which step is holding your team up?</h1>
             <p>
-              A seeded queue simulator. Pick a scenario, watch the bottleneck form and spread, then
-              scrub back through every tick.
+              Enter your workflow&rsquo;s steps, what each finishes per day, and real arrivals from your tracker.
+              Queueglass replays them, names the step that limits flow and reruns the line with one more unit of
+              capacity at each step.
             </p>
           </div>
-          <div className="scenarios" role="group" aria-label="Scenarios">
-            {Object.values(SCENARIOS).map((scenario) => (
-              <button
-                key={scenario.id}
-                id={`scenario-${scenario.id}`}
-                type="button"
-                className="scenario"
-                aria-pressed={scenarioId === scenario.id}
-                onClick={() => loadScenario(scenario.id as ScenarioId)}
-              >
-                <span className="scenario-name">{scenario.label}</span>
-                <span className="scenario-summary">{scenario.summary}</span>
-              </button>
-            ))}
-          </div>
-          <p className="scenario-note">{preset.summary}</p>
+          <a className="button primary intro-cta" href="#your-line">
+            Enter your line
+          </a>
         </section>
+
+        <div className="answer">
+          <section className="panel verdict" aria-labelledby="verdict-title" aria-live="polite">
+            <p className="source">
+              {isExample ? (
+                <>
+                  Example: purchase-order lines in the CAPEX &amp; SOCS spend area of the{" "}
+                  <a href="#example-source">BPI Challenge 2019 log</a>, 2018, per day
+                </>
+              ) : (
+                <>
+                  Your line: {plural(setup.line.arrivals.length, setup.unit)} of arrivals through{" "}
+                  {plural(setup.line.stages.length, "step")}
+                </>
+              )}
+            </p>
+            <h2 id="verdict-title">{verdict.title}</h2>
+            {verdict.detail.map((sentence) => (
+              <p key={sentence}>{sentence}</p>
+            ))}
+            {peak.backlog > 0 && (
+              <button type="button" className="text-button" onClick={() => seek(peak.period)}>
+                Show the board at the peak
+              </button>
+            )}
+          </section>
+
+          <section className="panel what-if" aria-labelledby="what-if-title">
+            <h2 id="what-if-title">One more per {setup.unit} at each step</h2>
+            <p>Each row is a full rerun of the same arrivals with that step&rsquo;s capacity raised by one.</p>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Capacity change</th>
+                    <th scope="col">Peak backlog</th>
+                    <th scope="col">Backlog cleared</th>
+                    <th scope="col">Item-{unitPlural} waiting</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">As entered</th>
+                    <td>{peak.backlog.toLocaleString("en-GB")}</td>
+                    <td>{clearedBy === null ? "no backlog" : label(clearedBy)}</td>
+                    <td>{analysis.heldBack.toLocaleString("en-GB")}</td>
+                  </tr>
+                  {whatIf.map((row, index) => (
+                    <tr key={index} data-limiting={index === limiting || undefined}>
+                      <th scope="row">
+                        {row.name} {row.capacity - 1} &rarr; {row.capacity}
+                      </th>
+                      <td>{row.peakBacklog.toLocaleString("en-GB")}</td>
+                      <td>
+                        {clearedBy === null ? "no backlog" : row.clearedBy === null ? "not cleared" : label(row.clearedBy)}
+                      </td>
+                      <td>{row.heldBack.toLocaleString("en-GB")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="table-note">
+              Item-{unitPlural} waiting adds up, over the whole replay, every item that was ready to move and
+              couldn&rsquo;t.
+            </p>
+          </section>
+        </div>
+
+        <LinePanel
+          key={panelKey}
+          setup={setup}
+          isExample={isExample}
+          onChange={changeSetup}
+          onLoadExample={loadExample}
+        />
 
         <section id="board" className="panel board-panel" aria-labelledby="board-title">
           <div className="board-bar">
@@ -334,13 +352,13 @@ export default function SimulatorLab({
                 onClick={togglePlay}
               >
                 <Icon name={playing ? "pause" : "play"} />
-                {playing ? "Pause" : tick >= RUN_LENGTH ? "Replay" : "Play"}
+                {playing ? "Pause" : tick >= last ? "Replay" : "Play"}
               </button>
               <button
                 id="step-back"
                 type="button"
                 className="icon-button"
-                aria-label="Back one tick"
+                aria-label={`Back one ${setup.unit}`}
                 disabled={tick === 0}
                 onClick={() => seek(tick - 1)}
               >
@@ -350,87 +368,53 @@ export default function SimulatorLab({
                 id="step-forward"
                 type="button"
                 className="icon-button"
-                aria-label="Forward one tick"
-                disabled={tick === RUN_LENGTH}
+                aria-label={`Forward one ${setup.unit}`}
+                disabled={tick === last}
                 onClick={() => seek(tick + 1)}
               >
                 <Icon name="next" />
               </button>
-              <button
-                id="restart"
-                type="button"
-                className="icon-button"
-                aria-label="Back to tick 0"
-                onClick={() => seek(0)}
-              >
+              <button id="restart" type="button" className="icon-button" aria-label="Back to the start" onClick={() => seek(0)}>
                 <Icon name="reset" />
               </button>
               <div className="speed" role="group" aria-label="Playback speed">
                 {SPEEDS.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={speed === value}
-                    onClick={() => setSpeed(value)}
-                  >
+                  <button key={value} type="button" aria-pressed={speed === value} onClick={() => setSpeed(value)}>
                     {value}×
                   </button>
                 ))}
               </div>
-              <span className="tick-readout">
-                <FlapText value={`T${String(tick).padStart(2, "0")}`} size="md" />
-                <span>of {RUN_LENGTH}</span>
-              </span>
             </div>
           </div>
 
           <FlowBoard
             frame={frame}
-            traffic={settings.traffic}
-            capacities={settings.capacities}
-            animate={playing && !reducedMotion}
+            unit={setup.unit}
+            animate={playing && !reducedMotion && tickMs >= MOVING_DOTS_MIN_MS}
             tickMs={tickMs}
-            onTraffic={(traffic) => setSettings({ ...settings, traffic })}
-            onCapacity={(index, value) =>
-              setSettings({
-                ...settings,
-                capacities: settings.capacities.map((capacity, at) => (at === index ? value : capacity)),
-              })
-            }
           />
-          {edited && (
-            <p className="edited-note">
-              You changed the {preset.label} settings, so this is a new run.{" "}
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setSettings(normalizeSettings(scenarioId))}
-              >
-                Back to the preset
-              </button>
-            </p>
-          )}
 
           <div className="replay">
             <div className="replay-head">
               <h2>Replay</h2>
               <p>
-                {runInsight(frames)} Drag across the lanes or use the slider to scrub to any tick.
+                {plural(last, setup.unit)}, including the {setup.unit}s after the last arrival while the line drains.
+                Drag across the lanes or use the slider.
               </p>
             </div>
-            <Timeline frames={frames} tick={tick} scenarioId={scenarioId} onSeek={seek} />
+            <Timeline frames={frames} tick={tick} window={window_} label={label} axisLabel={axisLabel} onSeek={seek} />
           </div>
         </section>
 
-        <section className="totals" aria-label={`Simulated totals at tick ${tick}`}>
+        <section className="totals" aria-label={`Totals at ${label(tick)}`}>
           <h2>
-            Totals at tick {tick}
-            <span>simulated items</span>
+            At {label(tick)}
+            <span>items</span>
           </h2>
           <dl>
-            {totals.map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
+            {totals.map(([name, value]) => (
+              <div key={name}>
+                <dt>{name}</dt>
                 <dd>{value}</dd>
               </div>
             ))}
@@ -439,60 +423,52 @@ export default function SimulatorLab({
 
         <div className="notes">
           <section className="panel" aria-labelledby="model-title">
-            <h2 id="model-title">How the model works</h2>
+            <h2 id="model-title">How the replay works</h2>
             <p>
-              Each tick, new items arrive at Receive. Steps are served from Finish back to Receive,
-              so an item moves at most one step per tick and space freed downstream is visible
-              upstream on the same tick. A step serves higher-priority items first, up to its
-              capacity.
+              Each {setup.unit}, that {setup.unit}&rsquo;s arrivals join the first step. Steps are served from the last
+              back to the first, oldest work first, each up to its capacity. An item moves at most one step per{" "}
+              {setup.unit}, so a line of {setup.line.stages.length} steps takes at least {setup.line.stages.length}{" "}
+              {unitPlural} end to end. With a WIP limit, a step stops passing work on while the next step already has
+              that many waiting.
             </p>
             <p>
-              The bottleneck is the step that left the most work unserved on a tick. A step that
-              cannot pass work on because the buffer after it is full is marked blocked, not
-              bottleneck: it is waiting on the step after it.
+              The backlog is the work that was ready to move and couldn&rsquo;t. The bottleneck in a {setup.unit} is
+              the step that left the most of it, and the step that limits flow is the one that was the bottleneck most
+              often. The +1 rows are not estimates: each is the whole replay run again.
             </p>
-            <p className="truth">
-              Everything here is generated in your browser by a small deterministic model. There
-              is no real system, telemetry or benchmark behind it. Capacity is in items per tick
-              and time is in ticks.
+            <p>
+              Capacity should be measured, not hoped for: count what each step actually finished on a busy{" "}
+              {setup.unit}. The model assumes every item passes every step and that capacity is the same every{" "}
+              {setup.unit}, weekends included.
+            </p>
+            <p className="keys">
+              <kbd>Space</kbd> plays or pauses. <kbd>←</kbd> <kbd>→</kbd> step one {setup.unit}.
             </p>
           </section>
-          <section className="panel" aria-labelledby="seed-title">
-            <h2 id="seed-title">Same seed, same run</h2>
+          <section className="panel" id="example-source" aria-labelledby="source-title">
+            <h2 id="source-title">Where the example comes from</h2>
             <p>
-              The seed fixes every random draw, so a seed plus a scenario and its settings always
-              produces the same {RUN_LENGTH} ticks. The share link carries all three.
+              The arrivals are the purchase-order lines created each day of 2018 in the CAPEX &amp; SOCS spend area of
+              the BPI Challenge 2019 event log from a coatings and paints company: B. F. van Dongen, 4TU.ResearchData,{" "}
+              <a href="https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1">
+                doi:10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1
+              </a>
+              , licensed{" "}
+              <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
             </p>
-            <form
-              className="seed-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                applySeed(seedDraft);
-              }}
-            >
-              <label htmlFor="seed-input">Seed</label>
-              <input
-                id="seed-input"
-                value={seedDraft}
-                onChange={(event) => setSeedDraft(event.target.value)}
-                maxLength={32}
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <button type="submit" className="button ghost">
-                Apply
-              </button>
-              <button
-                type="button"
-                className="button ghost"
-                onClick={() => applySeed(`LAB-${hashSeed(`${seed}:${tick}`).toString(36).toUpperCase()}`)}
-              >
-                <Icon name="shuffle" />
-                Another seed
-              </button>
-            </form>
-            <p className="keys">
-              <kbd>Space</kbd> plays or pauses. <kbd>←</kbd> <kbd>→</kbd> step one tick.
+            <p>
+              The three steps are the log&rsquo;s goods receipt, invoice receipt and invoice clearing. Each
+              capacity is that activity&rsquo;s 90th-percentile daily count on the days it ran. Queueglass changed the
+              data by counting events per day; the{" "}
+              <a href="https://github.com/fortunexbt/queueglass/blob/main/scripts/derive-bpi2019.mjs">
+                derivation script
+              </a>{" "}
+              and the derived CSV are in the repository.
+            </p>
+            <h2 id="privacy-title">Your data</h2>
+            <p>
+              Your steps and arrivals are replayed in this tab. The share link keeps them after the #, which browsers
+              do not send to any server, so the link itself is the only copy.
             </p>
           </section>
         </div>

@@ -1,15 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
-import { busyDay, decodeSetup, encodeSetup, exampleSetup, parseArrivals, parseDay, periodLabel } from "../src/lib/line.js";
+import { EXAMPLE_FILE, busyDay, decodeSetup, encodeSetup, exampleSetup, headline, parseArrivals, parseDay, periodLabel } from "../src/lib/line.js";
 import { analyzeLine } from "../src/lib/simulation.js";
 
-const dataDir = new URL("../data/", import.meta.url);
-const exampleCsv = async () => {
-  const [file] = (await readdir(dataDir)).filter((name) => name.startsWith("bpi2019-"));
-  return readFile(new URL(file, dataDir), "utf8");
-};
+const exampleCsv = () => readFile(new URL(`../data/${EXAMPLE_FILE}`, import.meta.url), "utf8");
 
 test("dates parse from ISO timestamps and Jira exports, and nonsense does not", () => {
   assert.equal(parseDay("2026-03-02"), parseDay("2026-03-02T23:59:00Z"));
@@ -19,13 +15,11 @@ test("dates parse from ISO timestamps and Jira exports, and nonsense does not", 
   assert.equal(parseDay("14"), null);
 });
 
-test("a column of counts becomes arrivals, with the start date when rows are dated", () => {
+test("a column of counts becomes arrivals; dated counts are summed per day or week", () => {
   assert.deepEqual(parseArrivals("opened\n3\n0\n12\n", "day"), { arrivals: [3, 0, 12], start: null, skipped: 1 });
-  assert.deepEqual(parseArrivals("date,opened\n2026-03-02,4\n2026-03-03,6", "day"), {
-    arrivals: [4, 6],
-    start: "2026-03-02",
-    skipped: 1,
-  });
+  const dated = "date,opened\n2026-03-02,4\n2026-03-03,6\n2026-03-05,1\n2026-03-09,2";
+  assert.deepEqual(parseArrivals(dated, "day"), { arrivals: [4, 6, 0, 1, 0, 0, 0, 2], start: "2026-03-02", skipped: 1 });
+  assert.deepEqual(parseArrivals(dated, "week"), { arrivals: [11, 2], start: "2026-03-02", skipped: 1 });
 });
 
 test("a column of item dates is tallied per day or per Monday week, gaps included", () => {
@@ -37,6 +31,7 @@ test("a column of item dates is tallied per day or per Monday week, gaps include
 test("unusable pastes explain themselves", () => {
   assert.match(parseArrivals("hello\nworld", "day").error, /No counts or dates/);
   assert.match(parseArrivals("4\n2026-03-02", "day").error, /not both/);
+  assert.match(parseArrivals("2020-01-01\n2026-01-01", "day").error, /span 2193 days/);
   assert.match(parseArrivals("1\n".repeat(1001), "day").error, /limit is 1000/);
 });
 
@@ -70,4 +65,26 @@ test("the BPI 2019 example is the committed derivation, with measured capacities
   const result = analyzeLine(line);
   assert.equal(result.frames.at(-1).totalFinished, 6749);
   assert.equal(result.limiting, 0);
+  const { title, detail } = headline({ line, start, unit }, result);
+  assert.equal(title, "Goods receipt limits flow.");
+  assert.match(detail.join(" "), /peaks at 78 items on 31 Oct 2018 and clears by 3 Nov 2018, 3 days later/);
+});
+
+test("the headline reports a real +1 rerun, including when it changes nothing", () => {
+  const setup = (capacities) => ({
+    line: { stages: capacities.map((capacity, index) => ({ name: ["Review", "Merge", "Deploy"][index], capacity })), bufferLimit: null, arrivals: [5, 5, 0, 0, 0, 0] },
+    unit: "day",
+    start: null,
+  });
+  const faster = headline(setup([5, 2, 5]), analyzeLine(setup([5, 2, 5]).line));
+  assert.equal(faster.title, "Merge limits flow.");
+  assert.deepEqual(faster.detail, [
+    "It held work back on 4 of 7 days replayed.",
+    "The backlog peaks at 6 items on day 3 and clears by day 6, 3 days later.",
+    "With 3 a day at Merge instead of 2, it clears by day 5, 2 days after the peak.",
+  ]);
+  const gone = headline(setup([5, 4, 5]), analyzeLine(setup([5, 4, 5]).line));
+  assert.equal(gone.detail.at(-1), "With 5 a day at Merge instead of 4, that peak never forms.");
+  const calm = headline(setup([9, 9, 9]), analyzeLine(setup([9, 9, 9]).line));
+  assert.equal(calm.title, "No step held work back.");
 });

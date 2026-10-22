@@ -15,11 +15,11 @@ const display = Barlow_Condensed({
 });
 
 const description =
-  "A seeded queue simulator. Send simulated work through four steps, watch where it jams, and scrub back through every tick.";
+  "Find the step that limits your team's workflow. Replay real arrivals from your tracker through your steps and see when the backlog clears, and whether one more unit of capacity would clear it sooner.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://queueglass.vercel.app"),
-  title: "queueglass · see where work gets stuck",
+  title: "queueglass · which step is holding your team up?",
   description,
   openGraph: {
     title: "queueglass",

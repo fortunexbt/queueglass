@@ -171,8 +171,8 @@ a:hover {
 }
 .button:active,
 .icon-button:active:not(:disabled),
-.scenario:active,
-.speed button:active {
+.speed button:active,
+.segmented button:active {
   transform: scale(0.97);
 }
 .button.primary {
@@ -237,6 +237,10 @@ a:hover {
   text-transform: uppercase;
   text-wrap: balance;
 }
+.intro-cta {
+  justify-self: end;
+  text-decoration: none;
+}
 .intro-copy p {
   max-width: 46ch;
   margin-top: 12px;
@@ -244,59 +248,255 @@ a:hover {
   font-size: 17px;
   text-wrap: pretty;
 }
-.scenarios {
+/* The answer: verdict and +1 reruns */
+.answer {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
-.scenario {
+.verdict,
+.what-if,
+.line-panel {
   display: grid;
   align-content: start;
-  gap: 6px;
-  min-height: 112px;
-  padding: 14px 16px 16px;
-  border: 1px solid var(--hair-strong);
-  border-radius: 10px;
-  background: var(--panel);
-  text-align: left;
-  transition:
-    background-color 200ms ease,
-    color 200ms ease,
-    border-color 200ms ease,
-    transform 120ms var(--ease-out);
+  gap: 12px;
+  padding: clamp(18px, 2vw, 26px);
 }
-.scenario-name {
+.verdict {
+  border-color: color-mix(in oklab, var(--amber) 55%, var(--hair));
+}
+.source {
+  color: var(--muted);
+  font-size: 13px;
+}
+.verdict h2 {
+  color: var(--amber);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(32px, 3.6vw, 48px);
+  line-height: 1;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+.verdict p:not(.source) {
+  max-width: 62ch;
+  color: var(--ink);
+  font-size: 17px;
+  text-wrap: pretty;
+}
+.verdict .text-button {
+  justify-self: start;
+}
+.what-if h2,
+.line-head h2 {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 22px;
-  line-height: 1.1;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
-.scenario-summary {
+.what-if > p,
+.line-head p {
   color: var(--ink-2);
-  font-size: 13.5px;
-  line-height: 1.4;
-  transition: color 200ms ease;
 }
-.scenario[aria-pressed="true"] {
-  border-color: var(--ink);
+.table-scroll {
+  overflow-x: auto;
+}
+.what-if table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.what-if th,
+.what-if td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--hair);
+  text-align: right;
+  white-space: nowrap;
+}
+.what-if th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+.what-if thead th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.what-if tbody th {
+  font-weight: 500;
+}
+.what-if tr[data-limiting] {
+  color: var(--amber);
+}
+.what-if .table-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Your line */
+.line-panel {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 18px 32px;
+  margin-bottom: 16px;
+  scroll-margin-top: 16px;
+}
+.line-head {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+}
+.steps {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.steps legend,
+.arrivals label,
+.wip span {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.steps ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 92px auto 40px;
+  align-items: center;
+  gap: 8px;
+}
+.step-index {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 18px;
+  text-align: center;
+}
+.step-unit {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.steps .button {
+  justify-self: start;
+}
+.line-panel input,
+.line-panel textarea {
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 8px;
+  background: var(--ground);
+  caret-color: var(--amber);
+}
+.line-panel input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.line-panel input[aria-invalid] {
+  border-color: var(--red);
+}
+.icon-button svg path {
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.line-options {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 24px;
+}
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 8px;
+}
+.segmented button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.segmented button[aria-pressed="true"] {
   background: var(--ink);
   color: var(--ground);
 }
-.scenario[aria-pressed="true"] .scenario-summary {
-  color: #3a3d3f;
+.wip {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 0 12px;
 }
-@media (hover: hover) and (pointer: fine) {
-  .scenario:not([aria-pressed="true"]):hover {
-    border-color: var(--ink-2);
-    background: var(--panel-raised);
-  }
+.wip span {
+  grid-column: 1 / -1;
+  margin: 0;
 }
-
-.scenario-note {
-  display: none;
+.wip small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.arrivals {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+.arrivals label {
+  margin: 0;
+}
+.arrivals p {
   color: var(--ink-2);
+  font-size: 14px;
+}
+.arrivals textarea {
+  height: auto;
+  min-height: 168px;
+  padding: 10px 12px;
+  font: 400 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  resize: vertical;
+}
+.arrivals-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.arrivals-status {
+  min-height: 1.5em;
+  font-size: 14px;
+}
+code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--panel-raised);
+  font: 400 0.9em ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 /* Panels */
@@ -367,20 +567,6 @@ a:hover {
   background: var(--hair-strong);
   color: var(--ink);
 }
-.tick-readout {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 6px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.edited-note {
-  margin-top: -6px;
-  color: var(--ink-2);
-  font-size: 14px;
-}
-
 .replay {
   display: grid;
   gap: 16px;
@@ -457,36 +643,6 @@ a:hover {
   max-width: 68ch;
   color: var(--ink-2);
 }
-.notes .truth {
-  padding-top: 12px;
-  border-top: 1px solid var(--hair);
-  color: var(--ink);
-}
-.seed-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.seed-form label {
-  width: 100%;
-  color: var(--muted);
-  font-size: 13px;
-}
-.seed-form input {
-  flex: 1 1 180px;
-  min-width: 0;
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--hair-strong);
-  border-radius: 8px;
-  background: var(--ground);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 18px;
-  letter-spacing: 0.06em;
-  caret-color: var(--amber);
-}
 .keys {
   font-size: 13px;
 }
@@ -515,6 +671,18 @@ kbd {
   .intro {
     grid-template-columns: 1fr;
   }
+  .intro-cta {
+    justify-self: start;
+  }
+  .answer,
+  .line-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .line-options,
+  .arrivals {
+    grid-column: 1;
+    grid-row: auto;
+  }
   .totals {
     grid-template-columns: 1fr;
   }
@@ -526,30 +694,16 @@ kbd {
   .notes {
     grid-template-columns: 1fr;
   }
-  .tick-readout {
-    margin-left: auto;
-  }
 }
 @media (max-width: 560px) {
   .truth-badge {
     font-size: 12px;
   }
-  .scenarios {
-    gap: 8px;
+  .steps li {
+    grid-template-columns: 18px minmax(0, 1fr) 76px 40px;
   }
-  .scenario {
-    min-height: 0;
-    padding: 12px;
-  }
-  .scenario-name {
-    font-size: 18px;
-  }
-  .scenario-summary {
+  .step-unit {
     display: none;
-  }
-  .scenario-note {
-    display: block;
-    margin-top: -12px;
   }
   .speed {
     margin-left: 0;

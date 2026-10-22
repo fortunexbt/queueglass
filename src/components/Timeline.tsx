@@ -1,46 +1,48 @@
 import { useId, useRef, useState } from "react";
 
-import type { Frame } from "@/components/FlowBoard";
-import { RUN_LENGTH, SCENARIOS, STAGES } from "@/lib/simulation.js";
+import type { Frame } from "@/lib/simulation.js";
 import styles from "./Timeline.module.css";
 
-type ScenarioId = keyof typeof SCENARIOS;
-
-// Lane geometry in viewBox units: x is the tick, y runs 0..LANE with a marker strip below
-// the baseline for bottleneck and blocked ticks.
+// Lane geometry in viewBox units: x is the period, y runs 0..LANE with a marker strip below
+// the baseline for bottleneck and blocked periods.
 const LANE = 40;
 const BASE = 33;
-const AXIS = [0, 10, 20, 30, 40, 50, 60];
 
-const at = (tick: number) =>
-  `calc(var(--pad) + (100% - 2 * var(--pad)) * ${tick / RUN_LENGTH})`;
-
-export function scenarioWindow(scenarioId: ScenarioId) {
-  const { burst, fault } = SCENARIOS[scenarioId];
-  if (burst) return { from: burst.from, to: burst.to, label: "Burst" };
-  if (fault)
-    return { from: fault.from, to: fault.to, label: `${STAGES[fault.stage].label} slowed` };
-  return null;
+// About six round-numbered axis marks, whatever the run length.
+function axisMarks(last: number) {
+  const raw = last / 6;
+  const magnitude = 10 ** Math.floor(Math.log10(Math.max(raw, 1)));
+  const step = [1, 2, 5, 10].map((factor) => factor * magnitude).find((value) => value >= raw) ?? raw;
+  const marks = [];
+  for (let period = 0; period <= last; period += step) marks.push(period);
+  return marks;
 }
 
 export default function Timeline({
   frames,
   tick,
-  scenarioId,
+  window,
+  label,
+  axisLabel,
   onSeek,
 }: {
   frames: Frame[];
   tick: number;
-  scenarioId: ScenarioId;
+  window: { from: number; to: number; label: string } | null;
+  label: (period: number) => string;
+  axisLabel: (period: number) => string;
   onSeek: (tick: number) => void;
 }) {
   const clipBase = useId().replace(/[^\w-]/g, "");
   const plotRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const [tableOpen, setTableOpen] = useState(false);
+  const last = frames.length - 1;
+  const names = frames[0].stages.map((stage) => stage.name);
   const peak = Math.max(4, ...frames.flatMap((frame) => frame.stages.map((stage) => stage.waiting)));
   const yMax = Math.ceil(peak / 4) * 4;
   const y = (value: number) => BASE - (value / yMax) * (BASE - 3);
-  const window = scenarioWindow(scenarioId);
+  const at = (period: number) => `calc(var(--pad) + (100% - 2 * var(--pad)) * ${period / last})`;
 
   const tickAt = (clientX: number) => {
     const plot = plotRef.current;
@@ -48,11 +50,12 @@ export default function Timeline({
     const pad = parseFloat(getComputedStyle(plot).getPropertyValue("--pad"));
     const rect = plot.getBoundingClientRect();
     const ratio = (clientX - rect.left - pad) / (rect.width - 2 * pad);
-    return Math.max(0, Math.min(RUN_LENGTH, Math.round(ratio * RUN_LENGTH)));
+    return Math.max(0, Math.min(last, Math.round(ratio * last)));
   };
 
   const shown = hover ?? tick;
   const hoverFrame = hover === null ? null : frames[hover];
+  const bottleneckName = (frame: Frame) => (frame.bottleneck === -1 ? null : names[frame.bottleneck]);
 
   return (
     <div className={styles.timeline}>
@@ -64,19 +67,19 @@ export default function Timeline({
           <i className={styles.keyBottleneck} /> Bottleneck
         </span>
         <span>
-          <i className={styles.keyBlocked} /> Blocked by a full buffer
+          <i className={styles.keyBlocked} /> Blocked by the WIP limit
         </span>
         {window && (
           <span>
-            <i className={styles.keyWindow} /> {window.label}, ticks {window.from} to {window.to}
+            <i className={styles.keyWindow} /> {window.label}
           </span>
         )}
       </div>
       <div className={styles.grid}>
         <ul className={styles.labels} aria-hidden="true">
-          {STAGES.map((stage, index) => (
-            <li key={stage.id}>
-              <span>{stage.label}</span>
+          {names.map((name, index) => (
+            <li key={index}>
+              <span>{name}</span>
               <b>{frames[shown].stages[index].waiting}</b>
             </li>
           ))}
@@ -101,26 +104,26 @@ export default function Timeline({
               className={styles.window}
               style={{
                 left: at(window.from - 0.5),
-                width: `calc((100% - 2 * var(--pad)) * ${(window.to - window.from + 1) / RUN_LENGTH})`,
+                width: `calc((100% - 2 * var(--pad)) * ${(window.to - window.from + 1) / last})`,
               }}
             />
           )}
-          {STAGES.map((stage, index) => {
-            const points = frames.map((frame) => `${frame.tick},${y(frame.stages[index].waiting).toFixed(2)}`);
+          {names.map((name, index) => {
+            const points = frames.map((frame) => `${frame.period},${y(frame.stages[index].waiting).toFixed(2)}`);
             const line = `M${points.join("L")}`;
-            const area = `M0,${BASE}L${points.join("L")}L${RUN_LENGTH},${BASE}Z`;
+            const area = `M0,${BASE}L${points.join("L")}L${last},${BASE}Z`;
             const clip = `${clipBase}-lane${index}`;
             return (
               <svg
-                key={stage.id}
+                key={index}
                 className={styles.lane}
-                viewBox={`0 0 ${RUN_LENGTH} ${LANE}`}
+                viewBox={`0 0 ${last} ${LANE}`}
                 preserveAspectRatio="none"
               >
                 <clipPath id={clip}>
                   <rect x="-1" y="0" width={tick + 1} height={LANE} />
                 </clipPath>
-                <line className={styles.baseline} x1="0" x2={RUN_LENGTH} y1={BASE} y2={BASE} />
+                <line className={styles.baseline} x1="0" x2={last} y1={BASE} y2={BASE} />
                 <path className={styles.futureArea} d={area} />
                 <path className={styles.futureLine} d={line} />
                 <g clipPath={`url(#${clip})`}>
@@ -129,7 +132,7 @@ export default function Timeline({
                 </g>
                 {frames.map((frame) => {
                   const kind =
-                    frame.bottleneck === stage.id
+                    frame.bottleneck === index
                       ? styles.markBottleneck
                       : frame.stages[index].blocked
                         ? styles.markBlocked
@@ -137,10 +140,10 @@ export default function Timeline({
                   return (
                     kind && (
                       <rect
-                        key={frame.tick}
+                        key={frame.period}
                         className={kind}
-                        data-future={frame.tick > tick || undefined}
-                        x={frame.tick - 0.5}
+                        data-future={frame.period > tick || undefined}
+                        x={frame.period - 0.5}
                         y={BASE + 2}
                         width="1"
                         height={LANE - BASE - 3}
@@ -154,22 +157,20 @@ export default function Timeline({
           <span className={styles.playhead} style={{ left: at(tick) }} />
           {hoverFrame && (
             <>
-              <span className={styles.crosshair} style={{ left: at(hoverFrame.tick) }} />
+              <span className={styles.crosshair} style={{ left: at(hoverFrame.period) }} />
               <div
                 className={styles.tooltip}
-                data-flip={hoverFrame.tick > RUN_LENGTH * 0.6 || undefined}
-                style={{ left: at(hoverFrame.tick) }}
+                data-flip={hoverFrame.period > last * 0.6 || undefined}
+                style={{ left: at(hoverFrame.period) }}
               >
-                <strong>Tick {hoverFrame.tick}</strong>
-                {hoverFrame.stages.map((stage) => (
-                  <span key={stage.id}>
-                    <b>{stage.waiting}</b> waiting at {stage.label}
+                <strong>{label(hoverFrame.period)}</strong>
+                {hoverFrame.stages.map((stage, index) => (
+                  <span key={index}>
+                    <b>{stage.waiting}</b> waiting at {stage.name}
                   </span>
                 ))}
                 <span className={styles.tooltipNote}>
-                  {hoverFrame.bottleneck
-                    ? `Bottleneck: ${STAGES.find((stage) => stage.id === hoverFrame.bottleneck)?.label}`
-                    : "No bottleneck"}
+                  {bottleneckName(hoverFrame) ? `Bottleneck: ${bottleneckName(hoverFrame)}` : "No bottleneck"}
                 </span>
               </div>
             </>
@@ -181,58 +182,60 @@ export default function Timeline({
             id="timeline-scrubber"
             type="range"
             min={0}
-            max={RUN_LENGTH}
+            max={last}
             step={1}
             value={tick}
             aria-label="Replay position"
-            aria-valuetext={`Tick ${tick} of ${RUN_LENGTH}`}
+            aria-valuetext={label(tick)}
             onChange={(event) => onSeek(Number(event.target.value))}
           />
           <div className={styles.axis} aria-hidden="true">
-            {AXIS.map((value) => (
+            {axisMarks(last).map((value) => (
               <span key={value} style={{ left: at(value) }}>
-                {value}
+                {axisLabel(value)}
               </span>
             ))}
           </div>
         </div>
       </div>
-      <details className={styles.table}>
-        <summary>Show every tick as a table</summary>
-        <div className={styles.tableScroll}>
-          <table>
-            <caption className="sr-only">Simulated values at the end of each tick</caption>
-            <thead>
-              <tr>
-                <th scope="col">Tick</th>
-                <th scope="col">Arrived</th>
-                <th scope="col">Finished</th>
-                {STAGES.map((stage) => (
-                  <th scope="col" key={stage.id}>
-                    {stage.label} waiting
-                  </th>
-                ))}
-                <th scope="col">Bottleneck</th>
-              </tr>
-            </thead>
-            <tbody>
-              {frames.map((frame) => (
-                <tr key={frame.tick} data-current={frame.tick === tick || undefined}>
-                  <th scope="row">{frame.tick}</th>
-                  <td>{frame.arrived}</td>
-                  <td>{frame.finished}</td>
-                  {frame.stages.map((stage) => (
-                    <td key={stage.id}>
-                      {stage.waiting}
-                      {stage.blocked ? " (blocked)" : ""}
-                    </td>
+      <details className={styles.table} onToggle={(event) => setTableOpen(event.currentTarget.open)}>
+        <summary>Show every period as a table</summary>
+        {tableOpen && (
+          <div className={styles.tableScroll}>
+            <table>
+              <caption className="sr-only">Replayed values at the end of each period</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Period</th>
+                  <th scope="col">Arrived</th>
+                  <th scope="col">Finished</th>
+                  {names.map((name, index) => (
+                    <th scope="col" key={index}>
+                      {name} waiting
+                    </th>
                   ))}
-                  <td>{STAGES.find((stage) => stage.id === frame.bottleneck)?.label ?? "None"}</td>
+                  <th scope="col">Bottleneck</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {frames.map((frame) => (
+                  <tr key={frame.period} data-current={frame.period === tick || undefined}>
+                    <th scope="row">{label(frame.period)}</th>
+                    <td>{frame.arrived}</td>
+                    <td>{frame.finished}</td>
+                    {frame.stages.map((stage, index) => (
+                      <td key={index}>
+                        {stage.waiting}
+                        {stage.blocked ? " (blocked)" : ""}
+                      </td>
+                    ))}
+                    <td>{bottleneckName(frame) ?? "None"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </details>
     </div>
   );
