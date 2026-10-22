@@ -9,7 +9,11 @@
   font-variant-numeric: tabular-nums;
 }
 .flap[data-size="sm"] {
+  --tile-w: 0.72em;
   font-size: 13px;
+}
+.flap[data-size="sm"] .tiles {
+  gap: 1px;
 }
 .flap[data-size="md"] {
   font-size: 22px;

@@ -307,6 +307,7 @@ a:hover {
 }
 .board-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   padding: clamp(16px, 2vw, 24px);
 }

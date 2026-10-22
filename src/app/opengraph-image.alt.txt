@@ -1,0 +1,1 @@
+queueglass flow board at tick 15 of the cascading failure scenario: Check is the bottleneck and Sort is blocked behind it. Simulated data.

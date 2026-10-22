@@ -1,6 +1,7 @@
 .board {
   --rail: 44px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -308,8 +309,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+@media (max-width: 1180px) and (min-width: 1101px) {
+  .stageHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 /* Narrow screens: the flow turns to run top to bottom. */
-@media (max-width: 860px) {
+@media (max-width: 1100px) {
   .board {
     --rail: 40px;
   }
