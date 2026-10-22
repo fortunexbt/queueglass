@@ -5,6 +5,12 @@
   gap: 18px;
 }
 
+@media (min-width: 1281px) {
+  .board {
+    --rail: 60px;
+  }
+}
+
 .boardHead {
   display: flex;
   flex-wrap: wrap;
@@ -83,7 +89,7 @@
   position: absolute;
   inset: 0 6px;
   transform: translateX(-100%);
-  animation: travel-x calc(var(--tick) * 0.5) var(--ease-in-out) both;
+  animation: travel-x calc(var(--tick) * 0.55) var(--ease-in-out) both;
 }
 .rail i::after {
   content: "";
@@ -119,17 +125,29 @@
 
 @keyframes travel-x {
   from {
+    opacity: 0;
     transform: translateX(-100%);
   }
+  20%,
+  80% {
+    opacity: 1;
+  }
   to {
+    opacity: 0;
     transform: translateX(0);
   }
 }
 @keyframes travel-y {
   from {
+    opacity: 0;
     transform: translateY(-100%);
   }
+  20%,
+  80% {
+    opacity: 1;
+  }
   to {
+    opacity: 0;
     transform: translateY(0);
   }
 }
