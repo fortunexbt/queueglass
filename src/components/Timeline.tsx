@@ -59,22 +59,6 @@ export default function Timeline({
 
   return (
     <div className={styles.timeline}>
-      <div className={styles.legend} aria-hidden="true">
-        <span>
-          <i className={styles.keyArea} /> Items waiting
-        </span>
-        <span>
-          <i className={styles.keyBottleneck} /> Bottleneck
-        </span>
-        <span>
-          <i className={styles.keyBlocked} /> Blocked by the WIP limit
-        </span>
-        {window && (
-          <span>
-            <i className={styles.keyWindow} /> {window.label}
-          </span>
-        )}
-      </div>
       <div className={styles.grid}>
         <ul className={styles.labels} aria-hidden="true">
           {names.map((name, index) => (
@@ -170,7 +154,7 @@ export default function Timeline({
                   </span>
                 ))}
                 <span className={styles.tooltipNote}>
-                  {bottleneckName(hoverFrame) ? `Bottleneck: ${bottleneckName(hoverFrame)}` : "No bottleneck"}
+                  {bottleneckName(hoverFrame) ? `${bottleneckName(hoverFrame)} was the bottleneck` : "No bottleneck"}
                 </span>
               </div>
             </>
@@ -198,45 +182,63 @@ export default function Timeline({
           </div>
         </div>
       </div>
-      <details className={styles.table} onToggle={(event) => setTableOpen(event.currentTarget.open)}>
-        <summary>Show every period as a table</summary>
-        {tableOpen && (
-          <div className={styles.tableScroll}>
-            <table>
-              <caption className="sr-only">Replayed values at the end of each period</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Period</th>
-                  <th scope="col">Arrived</th>
-                  <th scope="col">Finished</th>
-                  {names.map((name, index) => (
-                    <th scope="col" key={index}>
-                      {name} waiting
-                    </th>
-                  ))}
-                  <th scope="col">Bottleneck</th>
-                </tr>
-              </thead>
-              <tbody>
-                {frames.map((frame) => (
-                  <tr key={frame.period} data-current={frame.period === tick || undefined}>
-                    <th scope="row">{label(frame.period)}</th>
-                    <td>{frame.arrived}</td>
-                    <td>{frame.finished}</td>
-                    {frame.stages.map((stage, index) => (
-                      <td key={index}>
-                        {stage.waiting}
-                        {stage.blocked ? " (blocked)" : ""}
-                      </td>
+      <div className={styles.foot}>
+        <div className={styles.legend} aria-hidden="true">
+          <span>
+            <i className={styles.keyArea} /> Items waiting
+          </span>
+          <span>
+            <i className={styles.keyBottleneck} /> Bottleneck
+          </span>
+          <span>
+            <i className={styles.keyBlocked} /> Blocked by the WIP limit
+          </span>
+          {window && (
+            <span>
+              <i className={styles.keyWindow} /> {window.label}
+            </span>
+          )}
+        </div>
+        <details className={styles.table} onToggle={(event) => setTableOpen(event.currentTarget.open)}>
+          <summary>Show every period as a table</summary>
+          {tableOpen && (
+            <div className={styles.tableScroll}>
+              <table>
+                <caption className="sr-only">Replayed values at the end of each period</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Period</th>
+                    <th scope="col">Arrived</th>
+                    <th scope="col">Finished</th>
+                    {names.map((name, index) => (
+                      <th scope="col" key={index}>
+                        {name} waiting
+                      </th>
                     ))}
-                    <td>{bottleneckName(frame) ?? "None"}</td>
+                    <th scope="col">Bottleneck</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </details>
+                </thead>
+                <tbody>
+                  {frames.map((frame) => (
+                    <tr key={frame.period} data-current={frame.period === tick || undefined}>
+                      <th scope="row">{label(frame.period)}</th>
+                      <td>{frame.arrived}</td>
+                      <td>{frame.finished}</td>
+                      {frame.stages.map((stage, index) => (
+                        <td key={index}>
+                          {stage.waiting}
+                          {stage.blocked ? " (blocked)" : ""}
+                        </td>
+                      ))}
+                      <td>{bottleneckName(frame) ?? "None"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </details>
+      </div>
     </div>
   );
 }

@@ -41,37 +41,39 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
+// Three sight glasses. The middle one is full and taped off.
 function BrandMark() {
   return (
-    <svg className="brand-mark" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-      <rect x="2" y="4" width="7" height="20" rx="1.5" />
-      <rect x="10.5" y="4" width="7" height="20" rx="1.5" />
-      <rect x="19" y="4" width="7" height="20" rx="1.5" data-hot />
-      <path d="M2 14h24" />
+    <svg className="brand-mark" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+      <rect x="2" y="3" width="7" height="24" rx="2" />
+      <rect x="11.5" y="3" width="7" height="24" rx="2" />
+      <rect x="21" y="3" width="7" height="24" rx="2" />
+      <path d="M3.5 22.5h4M3.5 25h4M13 8h4M13 10.5h4M13 13h4M13 15.5h4M13 18h4M13 20.5h4M13 23h4M13 25.5h4M22.5 25h4" data-fill />
+      <path d="M11.5 5h7" data-hot />
     </svg>
   );
 }
 
 const plural = (count: number, word: string) => `${count.toLocaleString("en-GB")} ${word}${count === 1 ? "" : "s"}`;
 
-function describe(frame: Frame, when: string) {
+function describe(frame: Frame) {
   if (frame.period === 0) {
-    return { title: "Start", detail: "Nothing has arrived yet. Press play or drag the replay." };
+    return { title: "Nothing has arrived yet", detail: "Press play or drag along the replay." };
   }
   const blocked = frame.stages.filter((stage) => stage.blocked).map((stage) => stage.name);
-  const behind = blocked.length ? ` Held by the WIP limit: ${blocked.join(", ")}.` : "";
+  const behind = blocked.length ? ` The WIP limit held back ${blocked.join(", ")}.` : "";
   const bottleneck = frame.stages[frame.bottleneck];
   if (bottleneck) {
     return {
-      title: `${when}: ${bottleneck.name} is the bottleneck`,
+      title: `${bottleneck.name} is the bottleneck`,
       detail: `${plural(bottleneck.leftover, "item")} could not move on from ${bottleneck.name}, which finishes at most ${bottleneck.capacity}.${behind}`,
     };
   }
   if (blocked.length) {
-    return { title: `${when}: blocked by the WIP limit`, detail: `${blocked.join(", ")} cannot pass work on until the next step drains.` };
+    return { title: "Blocked by the WIP limit", detail: `${blocked.join(", ")} cannot pass work on until the next step drains.` };
   }
   return {
-    title: `${when}: everything moved`,
+    title: "Everything moved",
     detail: `${plural(frame.arrived, "item")} arrived and ${frame.finished} finished.`,
   };
 }
@@ -141,7 +143,7 @@ export default function SimulatorLab({ example }: { example: Setup }) {
   const tickMs = Math.min(600, Math.max(40, RUN_MS / last)) / speed;
   const label = (period: number) => periodLabel(setup, period);
   const unitPlural = `${setup.unit}s`;
-  const message = describe(frame, label(tick));
+  const message = describe(frame);
 
   useEffect(() => {
     if (!playing) return;
@@ -220,13 +222,8 @@ export default function SimulatorLab({ example }: { example: Setup }) {
       ? new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
       : String(period);
   };
-  const totals = [
-    ["Arrived so far", frames.slice(1, tick + 1).reduce((sum, item) => sum + item.arrived, 0)],
-    ["Finished so far", frame.totalFinished],
-    ["In the line now", frame.inLine],
-    ["Held back this " + setup.unit, frame.backlog],
-    [`Average ${unitPlural} to finish`, frame.totalFinished ? frame.meanPeriodsToFinish : "none yet"],
-  ] as const;
+  const arrivedSoFar = frames.slice(1, tick + 1).reduce((sum, item) => sum + item.arrived, 0);
+  const num = (value: number) => value.toLocaleString("en-GB");
 
   return (
     <div className="page">
@@ -238,7 +235,11 @@ export default function SimulatorLab({ example }: { example: Setup }) {
           <BrandMark />
           queueglass
         </p>
-        <span className="truth-badge">Runs in your browser</span>
+        <h1 id="page-title">Which step is holding your team up?</h1>
+        <p className="runs-here">Runs in your browser</p>
+        <a className="button ghost masthead-cta" href="#your-line">
+          Enter your line
+        </a>
         <button id="copy-link" type="button" className="button ghost" data-feedback={copied} onClick={copyLink}>
           <Icon name="share" />
           <span className="button-label">
@@ -248,107 +249,35 @@ export default function SimulatorLab({ example }: { example: Setup }) {
       </header>
 
       <main>
-        <section className="intro" aria-labelledby="page-title">
-          <div className="intro-copy">
-            <h1 id="page-title">Which step is holding your team up?</h1>
-            <p>
-              Enter your workflow&rsquo;s steps, what each finishes per day, and real arrivals from your tracker.
-              Queueglass replays them, names the step that limits flow and reruns the line with one more unit of
-              capacity at each step.
-            </p>
-          </div>
-          <a className="button primary intro-cta" href="#your-line">
-            Enter your line
-          </a>
-        </section>
-
-        <div className="answer">
-          <section className="panel verdict" aria-labelledby="verdict-title" aria-live="polite">
+        <section id="board" className="floor" aria-labelledby="verdict-title">
+          <div className="verdict" aria-live="polite">
             <p className="source">
               {isExample ? (
                 <>
-                  Example: purchase-order lines in the CAPEX &amp; SOCS spend area of the{" "}
+                  Example replay of purchase-order lines in the CAPEX &amp; SOCS spend area of the{" "}
                   <a href="#example-source">BPI Challenge 2019 log</a>, 2018, per day
                 </>
               ) : (
                 <>
-                  Your line: {plural(setup.line.arrivals.length, setup.unit)} of arrivals through{" "}
+                  Your line, {plural(setup.line.arrivals.length, setup.unit)} of arrivals through{" "}
                   {plural(setup.line.stages.length, "step")}
                 </>
               )}
             </p>
             <h2 id="verdict-title">{verdict.title}</h2>
-            {verdict.detail.map((sentence) => (
-              <p key={sentence}>{sentence}</p>
-            ))}
-            {peak.backlog > 0 && (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  seek(peak.period);
-                  document.getElementById("board")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
-                }}
-              >
-                Show the board at the peak
-              </button>
-            )}
-          </section>
-
-          <section className="panel what-if" aria-labelledby="what-if-title">
-            <h2 id="what-if-title">One more per {setup.unit} at each step</h2>
-            <p>Each row is a full rerun of the same arrivals with that step&rsquo;s capacity raised by one.</p>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Capacity change</th>
-                    <th scope="col">Peak backlog</th>
-                    <th scope="col">Backlog cleared</th>
-                    <th scope="col">Item-{unitPlural} waiting</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <th scope="row">As entered</th>
-                    <td>{peak.backlog.toLocaleString("en-GB")}</td>
-                    <td>{clearedBy === null ? "no backlog" : label(clearedBy)}</td>
-                    <td>{analysis.heldBack.toLocaleString("en-GB")}</td>
-                  </tr>
-                  {whatIf.map((row, index) => (
-                    <tr key={index} data-limiting={index === limiting || undefined}>
-                      <th scope="row">
-                        {row.name} {row.capacity - 1} &rarr; {row.capacity}
-                      </th>
-                      <td>{row.peakBacklog.toLocaleString("en-GB")}</td>
-                      <td>
-                        {clearedBy === null ? "no backlog" : row.clearedBy === null ? "not cleared" : label(row.clearedBy)}
-                      </td>
-                      <td>{row.heldBack.toLocaleString("en-GB")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="verdict-detail">
+              {verdict.detail.map((sentence) => (
+                <p key={sentence}>{sentence}</p>
+              ))}
             </div>
-            <p className="table-note">
-              Item-{unitPlural} waiting adds up, over the whole replay, every item that was ready to move and
-              couldn&rsquo;t.
-            </p>
-          </section>
-        </div>
+          </div>
 
-        <LinePanel
-          key={panelKey}
-          setup={setup}
-          isExample={isExample}
-          onChange={changeSetup}
-          onLoadExample={loadExample}
-        />
-
-        <section id="board" className="panel board-panel" aria-labelledby="board-title">
           <div className="board-bar">
-            <div className="message">
-              <h2 id="board-title">{message.title}</h2>
+            <div className="message" aria-live="off">
+              <h2 id="board-title">
+                <time className="clock">{label(tick)}</time>
+                <span>{message.title}</span>
+              </h2>
               <p>{message.detail}</p>
             </div>
             <div className="transport" role="group" aria-label="Playback">
@@ -403,34 +332,90 @@ export default function SimulatorLab({ example }: { example: Setup }) {
           />
 
           <div className="replay">
-            <div className="replay-head">
-              <h2>Replay</h2>
-              <p>
-                {plural(last, setup.unit)}, including the {setup.unit}s after the last arrival while the line drains.
-                Drag across the lanes or use the slider.
+            <Timeline frames={frames} tick={tick} window={window_} label={label} axisLabel={axisLabel} onSeek={seek} />
+            <div className="replay-foot">
+              <p className="tally" aria-label={`Totals at ${label(tick)}`}>
+                {tick === 0 ? (
+                  <>Nothing has arrived yet.</>
+                ) : (
+                  <>
+                    By {label(tick)}, {num(arrivedSoFar)} arrived and {num(frame.totalFinished)} finished.{" "}
+                    {num(frame.inLine)} are in the line and {num(frame.backlog)} were held back this {setup.unit}.
+                    {frame.totalFinished > 0 && (
+                      <>
+                        {" "}
+                        Finished items took {frame.meanPeriodsToFinish} {unitPlural} on average.
+                      </>
+                    )}
+                  </>
+                )}
+              </p>
+              <p className="replay-note">
+                {plural(last, setup.unit)}, including the {unitPlural} after the last arrival while the line drains.
+                Drag across the lanes or use the slider.{" "}
+                {peak.backlog > 0 && tick !== peak.period && (
+                  <button type="button" className="text-button" onClick={() => seek(peak.period)}>
+                    Go to the peak
+                  </button>
+                )}
               </p>
             </div>
-            <Timeline frames={frames} tick={tick} window={window_} label={label} axisLabel={axisLabel} onSeek={seek} />
           </div>
         </section>
 
-        <section className="totals" aria-label={`Totals at ${label(tick)}`}>
-          <h2>
-            At {label(tick)}
-            <span>items</span>
-          </h2>
-          <dl>
-            {totals.map(([name, value]) => (
-              <div key={name}>
-                <dt>{name}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
+        <section className="what-if" aria-labelledby="what-if-title">
+          <div className="what-if-head">
+            <h2 id="what-if-title">One more per {setup.unit} at each step</h2>
+            <p>Each row is a full rerun of the same arrivals with that step&rsquo;s capacity raised by one.</p>
+            <p className="table-note">
+              Item-{unitPlural} waiting adds up, over the whole replay, every item that was ready to move and
+              couldn&rsquo;t.
+            </p>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Capacity change</th>
+                  <th scope="col">Peak backlog</th>
+                  <th scope="col">Backlog cleared</th>
+                  <th scope="col">Item-{unitPlural} waiting</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">As entered</th>
+                  <td>{num(peak.backlog)}</td>
+                  <td>{clearedBy === null ? "no backlog" : label(clearedBy)}</td>
+                  <td>{num(analysis.heldBack)}</td>
+                </tr>
+                {whatIf.map((row, index) => (
+                  <tr key={index} data-limiting={index === limiting || undefined}>
+                    <th scope="row">
+                      {row.name} {row.capacity - 1} to {row.capacity}
+                    </th>
+                    <td>{num(row.peakBacklog)}</td>
+                    <td>
+                      {clearedBy === null ? "no backlog" : row.clearedBy === null ? "not cleared" : label(row.clearedBy)}
+                    </td>
+                    <td>{num(row.heldBack)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
+        <LinePanel
+          key={panelKey}
+          setup={setup}
+          isExample={isExample}
+          onChange={changeSetup}
+          onLoadExample={loadExample}
+        />
+
         <div className="notes">
-          <section className="panel" aria-labelledby="model-title">
+          <section aria-labelledby="model-title">
             <h2 id="model-title">How the replay works</h2>
             <p>
               Each {setup.unit}, that {setup.unit}&rsquo;s arrivals join the first step. Steps are served from the last
@@ -442,10 +427,10 @@ export default function SimulatorLab({ example }: { example: Setup }) {
             <p>
               The backlog is the work that was ready to move and couldn&rsquo;t. The bottleneck in a {setup.unit} is
               the step that left the most of it, and the step that limits flow is the one that was the bottleneck most
-              often. The +1 rows are not estimates: each is the whole replay run again.
+              often. The +1 rows are not estimates. Each is the whole replay run again.
             </p>
             <p>
-              Capacity should be measured, not hoped for: count what each step actually finished on a busy{" "}
+              Capacity should be measured, not hoped for. Count what each step actually finished on a busy{" "}
               {setup.unit}. The model assumes every item passes every step and that capacity is the same every{" "}
               {setup.unit}, weekends included.
             </p>
@@ -453,21 +438,20 @@ export default function SimulatorLab({ example }: { example: Setup }) {
               <kbd>Space</kbd> plays or pauses. <kbd>←</kbd> <kbd>→</kbd> step one {setup.unit}.
             </p>
           </section>
-          <section className="panel" id="example-source" aria-labelledby="source-title">
+          <section id="example-source" aria-labelledby="source-title">
             <h2 id="source-title">Where the example comes from</h2>
             <p>
               The arrivals are the purchase-order lines created each day of 2018 in the CAPEX &amp; SOCS spend area of
-              the BPI Challenge 2019 event log from a coatings and paints company: B. F. van Dongen, 4TU.ResearchData,{" "}
+              the BPI Challenge 2019 event log from a coatings and paints company. B. F. van Dongen, 4TU.ResearchData,{" "}
               <a href="https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1">
                 doi:10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1
               </a>
-              , licensed{" "}
-              <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
+              , licensed <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
             </p>
             <p>
               The three steps are the log&rsquo;s goods receipt, invoice receipt and invoice clearing. Each
               capacity is that activity&rsquo;s 90th-percentile daily count on the days it ran. Queueglass changed the
-              data by counting events per day; the{" "}
+              data by counting events per day. The{" "}
               <a href="https://github.com/fortunexbt/queueglass/blob/main/scripts/derive-bpi2019.mjs">
                 derivation script
               </a>{" "}

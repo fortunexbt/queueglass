@@ -1,17 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Barlow, Barlow_Condensed } from "next/font/google";
+import { Archivo } from "next/font/google";
 
 import "./globals.css";
 
-const body = Barlow({
+// One family; the width axis does the work a second display face would.
+const archivo = Archivo({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-body",
-});
-const display = Barlow_Condensed({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-  variable: "--font-display",
+  axes: ["wdth"],
+  variable: "--font-archivo",
 });
 
 const description =
@@ -30,15 +26,15 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0e1113",
-  colorScheme: "dark",
+  themeColor: "#e3e9eb",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${body.variable} ${display.variable}`}>
+    <html lang="en" className={archivo.variable}>
       <body>{children}</body>
     </html>
   );

@@ -59,7 +59,11 @@ export default function LinePanel({
     <section id="your-line" className="panel line-panel" aria-labelledby="line-title">
       <div className="line-head">
         <h2 id="line-title">Your line</h2>
-        <p>Steps in order, what each finishes per {setup.unit}, and the work that arrived. It all stays in this browser.</p>
+        <p>
+          Enter your workflow&rsquo;s steps in order, what each finishes per {setup.unit}, and the work that arrived
+          from your tracker. Queueglass replays them, names the step that limits flow and reruns the line with one
+          more unit of capacity at each step. It all stays in this browser.
+        </p>
       </div>
 
       <fieldset className="steps">

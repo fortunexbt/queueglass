@@ -1,42 +1,16 @@
 .board {
-  --rail: 44px;
+  --belt: 58px;
+  --tile-w: 16px;
+  --tile-h: 11px;
+  --tile-gap: 3px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
-}
-
-@media (min-width: 1281px) {
-  .board {
-    --rail: 60px;
-  }
-}
-
-.boardKey {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.keyTile {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  background: var(--queue);
-}
-.keyMeter {
-  width: 22px;
-  height: 6px;
-  margin-left: 10px;
-  border-radius: 3px;
-  background: linear-gradient(to right, var(--ink-2) 60%, var(--hair-strong) 60%);
+  gap: 10px;
 }
 
 .flow {
   display: flex;
   margin: 0;
-  padding: 0 var(--rail) 0 0;
+  padding: 0 var(--belt) 0 0;
   list-style: none;
 }
 .slot {
@@ -45,91 +19,82 @@
   flex: 1 1 0;
   min-width: 0;
 }
-/* Five to eight steps: tighter rails and cards, and the row scrolls rather than crushing them. */
+/* Five to eight steps: shorter belts and smaller cartons, and the row scrolls rather than crushing them. */
 .board[data-many] {
-  --rail: 28px;
+  --belt: 34px;
+  --tile-w: 9px;
+  --tile-h: 7px;
+  --tile-gap: 2px;
 }
 .board[data-many] .flow {
   overflow-x: auto;
   padding-bottom: 6px;
 }
 .board[data-many] .slot {
-  min-width: 172px;
+  min-width: 200px;
 }
 .board[data-many] .stageHead h3 {
-  font-size: 18px;
+  font-size: 16px;
+}
+.board[data-many] .status {
+  padding-inline: 6px;
 }
 
-/* Rails between steps */
-.rail {
+/* The belt between steps: a roller track with the count that crossed it this period */
+.belt {
   position: relative;
-  flex: 0 0 var(--rail);
+  flex: 0 0 var(--belt);
   overflow: hidden;
 }
-.rail[data-end="out"] {
+.belt[data-end="out"] {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 100%;
-  width: var(--rail);
+  width: var(--belt);
 }
 .track {
   position: absolute;
-  top: 50%;
-  left: 6px;
-  right: 6px;
-  height: 2px;
-  background: var(--hair-strong);
-  transition: background-color 200ms ease;
-}
-.rail[data-active="true"] .track {
-  background: color-mix(in oklab, var(--ink-2) 55%, var(--hair-strong));
-}
-.track::after {
-  content: "";
-  position: absolute;
-  right: -2px;
-  top: -4px;
-  border-style: solid;
-  border-width: 5px 0 5px 6px;
-  border-color: transparent transparent transparent var(--hair-strong);
-}
-.rail i {
-  position: absolute;
-  inset: 0 6px;
-  transform: translateX(-100%);
-  animation: travel-x calc(var(--tick) * 0.55) var(--ease-in-out) both;
-}
-.rail i::after {
-  content: "";
-  position: absolute;
-  top: calc(50% - 4px);
-  right: 0;
-  width: 8px;
+  top: calc(50% + 6px);
+  left: 4px;
+  right: 4px;
   height: 8px;
-  border-radius: 2px;
-  background: var(--ink);
-  box-shadow: 0 0 0 2px var(--panel);
+  border-block: 1.5px solid var(--hair-strong);
+  background: repeating-linear-gradient(90deg, var(--hair-strong) 0 1.5px, transparent 1.5px 7px);
 }
-.railCount {
+.belt[data-active="true"] .track {
+  border-color: var(--steel-2);
+  background: repeating-linear-gradient(90deg, var(--steel-2) 0 1.5px, transparent 1.5px 7px);
+}
+.beltCount {
   position: absolute;
-  top: calc(50% - 30px);
+  top: calc(50% - 22px);
   left: 0;
   right: 0;
-  display: grid;
-  justify-items: center;
-  font-family: var(--font-display);
+  color: var(--steel-2);
   font-weight: 600;
-  font-size: 15px;
-  line-height: 1;
-  color: var(--ink-2);
+  font-size: 12px;
+  font-variation-settings: "wdth" 82;
   font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
 }
-.railCount small {
-  font-family: var(--font-body);
-  font-weight: 500;
-  font-size: 11px;
-  color: var(--muted);
+.belt i {
+  position: absolute;
+  top: calc(50% + 1px);
+  left: 4px;
+  right: 4px;
+  height: 6px;
+  animation: travel-x var(--tick) linear both;
+}
+.belt i::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  width: 9px;
+  height: 6px;
+  border-radius: 1.5px;
+  background: var(--carton);
 }
 
 @keyframes travel-x {
@@ -161,258 +126,268 @@
   }
 }
 
-/* A step */
+/* A step: its name, the sight glass with the waiting pile, and what it moved */
 .stage {
   flex: 1 1 auto;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  background: var(--panel-raised);
-  transition:
-    border-color 220ms ease,
-    background-color 220ms ease,
-    box-shadow 220ms ease;
-}
-.stage[data-status="bottleneck"] {
-  border-color: var(--amber);
-  background: color-mix(in oklab, var(--amber) 9%, var(--panel-raised));
-  box-shadow:
-    0 0 0 1px var(--amber),
-    0 12px 32px -12px color-mix(in oklab, var(--amber) 45%, transparent);
-}
-.stage[data-status="blocked"] {
-  border-color: color-mix(in oklab, var(--red) 60%, var(--hair));
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
 }
 .stageHead {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 26px;
 }
 .stageHead h3 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 24px;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  line-height: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 680;
+  font-size: 18px;
+  font-variation-settings: "wdth" 108;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
 .status {
-  padding: 3px 7px;
+  flex: none;
+  padding: 3px 8px;
   border-radius: 4px;
-  background: var(--hair);
-  color: var(--ink-2);
-  font-family: var(--font-display);
+  color: var(--muted);
   font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  text-transform: uppercase;
+  font-size: 12px;
 }
-.status[data-tone="amber"] {
-  background: var(--amber);
-  color: var(--amber-ink);
+.status[data-tone="go"] {
+  color: var(--go);
 }
-.status[data-tone="red"] {
-  color: var(--red);
+.status[data-tone="go"]::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
-.status[data-tone="green"] {
-  color: var(--green);
+.status[data-tone="hazard"] {
+  background: var(--hazard);
+  color: var(--steel);
+}
+.status[data-tone="stop"] {
+  background: var(--stop);
+  color: #fff;
 }
 
-.queue {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-}
-.count {
+.glass {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--muted);
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 134px;
+  padding: 16px 10px 8px;
+  overflow: hidden;
+  border: 1.5px solid var(--hair-strong);
+  border-radius: 10px;
+  background: var(--glass);
+  box-shadow:
+    inset 0 2px 0 #fff,
+    inset 0 -14px 0 -10px var(--floor);
+  transition: border-color 200ms ease;
 }
-.count b {
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: clamp(28px, 3.4vw, 40px);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+/* The reflection on the glass: one narrow band, not a wash. */
+.glass::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 62%;
+  width: 22px;
+  background: rgb(255 255 255 / 80%);
+  transform: skewX(-14deg);
+  pointer-events: none;
 }
+.stage[data-status="bottleneck"] .glass {
+  border-color: var(--steel);
+}
+.stage[data-status="bottleneck"] .glass::before,
+.stage[data-status="blocked"] .glass::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 8px;
+  background: var(--tape);
+}
+.stage[data-status="blocked"] .glass {
+  border-color: var(--stop);
+}
+.stage[data-status="blocked"] .glass::before {
+  background: repeating-linear-gradient(-45deg, var(--stop) 0 7px, #fff 7px 14px);
+}
+
+/* Waiting items stack from the floor of the glass up, oldest first, in front of the reflection. */
 .pile {
-  display: grid;
-  grid-template-columns: repeat(8, 12px);
-  grid-auto-rows: 12px;
-  gap: 3px;
-  min-height: calc(12px * 2 + 3px);
-  align-content: start;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-content: flex-start;
+  gap: var(--tile-gap);
 }
 .pile i {
-  border-radius: 2px;
-  background: var(--queue);
-  animation: land 220ms var(--ease-out) both;
+  width: var(--tile-w);
+  height: var(--tile-h);
+  border-radius: 1.5px;
+  background: var(--carton);
 }
-.stage[data-status="bottleneck"] .pile i {
-  background: var(--amber);
+.pile i[data-held] {
+  background: var(--hazard);
+  box-shadow: inset 0 0 0 1px var(--steel);
 }
 .more {
-  grid-column: span 3;
-  align-self: center;
+  margin-top: 6px;
+  color: var(--steel-2);
   font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-@keyframes land {
-  from {
-    opacity: 0;
-    transform: translateY(-6px) scale(0.7);
-  }
 }
 
-.capacity {
+.readout {
+  display: grid;
+  gap: 4px;
+  color: var(--steel-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.readout b {
+  color: var(--steel);
+  font-weight: 650;
+}
+.gauge {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .meter {
   position: relative;
-  flex: 1 1 80px;
-  max-width: 160px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--hair-strong);
+  flex: 0 0 64px;
+  height: 5px;
   overflow: hidden;
+  border-radius: 3px;
+  background: var(--hair);
 }
 .meter i {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: inherit;
-  background: var(--ink-2);
-  transition: width 160ms ease;
+  background: var(--steel-2);
+  transition: width 160ms var(--ease-out);
 }
-.meter[data-blocked] {
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, var(--red) 55%, transparent) 0 2px,
-    transparent 2px 4px
-  );
-}
-.capacityText {
-  color: var(--ink-2);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
+.meter[data-blocked] i {
+  background: var(--stop);
 }
 
-@media (max-width: 1180px) and (min-width: 1101px) {
-  .stageHead {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.key i {
+  width: 13px;
+  height: 9px;
+  border-radius: 1.5px;
+  background: var(--carton);
+}
+.key i[data-held] {
+  background: var(--hazard);
+  box-shadow: inset 0 0 0 1px var(--steel);
 }
 
-/* Narrow screens: the flow turns to run top to bottom. */
-@media (max-width: 1100px) {
-  .board {
-    --rail: 40px;
+/* Phone and narrow tablet: the line runs top to bottom. */
+@media (max-width: 760px) {
+  .board,
+  .board[data-many] {
+    --belt: 40px;
+    --tile-w: 11px;
+    --tile-h: 8px;
+    --tile-gap: 2px;
   }
   .flow,
   .board[data-many] .flow {
     flex-direction: column;
-    overflow-x: visible;
-    padding: 0 0 var(--rail);
+    padding: 0 0 var(--belt);
+    overflow: visible;
   }
-  .slot {
+  .slot,
+  .board[data-many] .slot {
     flex-direction: column;
+    min-width: 0;
   }
-  .rail[data-end="out"] {
+  .belt[data-end="out"] {
     top: 100%;
     bottom: auto;
     left: 0;
     right: 0;
     width: auto;
-    height: var(--rail);
+    height: var(--belt);
   }
   .track {
-    top: 6px;
-    bottom: 6px;
-    left: 50%;
+    top: 4px;
+    bottom: 4px;
+    left: 24px;
     right: auto;
-    width: 2px;
+    width: 8px;
     height: auto;
+    border-block: 0;
+    border-inline: 1.5px solid var(--hair-strong);
+    background: repeating-linear-gradient(0deg, var(--hair-strong) 0 1.5px, transparent 1.5px 7px);
   }
-  .track::after {
-    right: -4px;
-    top: auto;
-    bottom: -2px;
-    border-width: 6px 5px 0;
-    border-color: var(--hair-strong) transparent transparent;
+  .belt[data-active="true"] .track {
+    background: repeating-linear-gradient(0deg, var(--steel-2) 0 1.5px, transparent 1.5px 7px);
   }
-  .rail i {
-    inset: 6px 0;
-    transform: translateY(-100%);
+  .beltCount {
+    top: 50%;
+    left: 44px;
+    right: auto;
+    transform: translateY(-50%);
+  }
+  .belt i {
+    top: 4px;
+    bottom: 4px;
+    left: 25px;
+    right: auto;
+    width: 6px;
+    height: auto;
     animation-name: travel-y;
   }
-  .rail i::after {
-    top: auto;
-    bottom: 0;
-    right: calc(50% - 4px);
-  }
-  .railCount {
-    top: calc(50% - 8px);
-    left: calc(50% + 14px);
+  .belt i::before {
     right: auto;
-    display: flex;
-    gap: 4px;
-    align-items: baseline;
+    bottom: 0;
+    width: 6px;
+    height: 9px;
   }
-  .stage {
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto auto;
-    gap: 12px 16px;
-    padding: 14px;
-  }
-  .stageHead {
-    grid-column: 1 / -1;
-  }
-  .queue {
-    grid-column: 1;
-    grid-row: 2 / span 2;
-  }
-  .pile {
-    min-height: 0;
-  }
-  .capacity {
-    grid-column: 2;
-    grid-row: 2;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: flex-start;
-    text-align: right;
-  }
-  .meter {
-    width: 120px;
-    flex: none;
-  }
-  .stageHead h3 {
-    font-size: 22px;
+  .glass {
+    height: auto;
+    min-height: 64px;
+    max-height: 168px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rail i,
-  .pile i {
-    animation: none;
-  }
-  .rail i {
+  .belt i {
     display: none;
+  }
+  .meter i {
+    transition: none;
   }
 }

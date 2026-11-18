@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.0 (2026-11-18)
+
+- The replay is now the first thing on the page. The verdict, the line, playback and the scrubber all fit in a 1280 by 800 screen.
+- Each step is a sight glass. Waiting items stack inside it, and the ones that were ready but could not move are marked in yellow. The bottleneck is taped off.
+- The running totals read as one sentence under the replay.
+- A light frosted look with one typeface, Archivo, replaces the dark condensed design. New favicon, Open Graph image and README screenshot.
+
 ## 2.0.0 (2026-10-23)
 
 - Queueglass now replays a team's own line: 2 to 8 named steps with measured throughput, an optional WIP limit, and real arrivals pasted as counts or as the Created column of a Jira, Linear or GitHub export.
