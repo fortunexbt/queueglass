@@ -164,8 +164,8 @@
   z-index: 2;
   display: grid;
   gap: 3px;
-  min-width: 168px;
   margin-left: 14px;
+  white-space: nowrap;
   padding: 10px 12px;
   border: 1px solid var(--hair-strong);
   border-radius: 8px;
